@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16
+    container_name: goqueue-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: goqueue
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: goqueue
+    ports:
+      - "5433:5432"
+    volumes:
+      - goqueue_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goqueue -d goqueue"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  goqueue_data:
