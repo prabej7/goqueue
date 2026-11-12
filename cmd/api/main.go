@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,11 +12,19 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	_, err := database.NewPostgresDB(
+	log.Print("config loaded successfully")
+
+	ctx := context.Background()
+
+	db, err := database.NewPostgresDB(
+		ctx,
 		cfg.DatabaseConfig.DatabaseURL,
-		cfg.DatabaseConfig.MaxOpenConnection,
+		cfg.DatabaseConfig.MaxOpenConnections,
 		cfg.DatabaseConfig.MaxIdleConnections,
 		cfg.DatabaseConfig.MaxConnectionIdleTime,
 	)
@@ -24,9 +33,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	defer db.Close()
+
 	log.Print("db initialized successfully")
 
-	handler := server.New()
+	handler := server.New(
+		server.Dependencies{
+			DB: db,
+		},
+	)
 
 	log.Printf("GoQueue API starting on port %s", cfg.Port)
 
