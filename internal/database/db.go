@@ -8,7 +8,13 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func NewPostgresDB(addr string, maxOpenConnection int, maxIdleConnections int, maxConnectionIdleTime string) (*sql.DB, error) {
+func NewPostgresDB(
+	ctx context.Context,
+	addr string,
+	maxOpenConnection int,
+	maxIdleConnections int,
+	maxConnectionIdleTime time.Duration,
+) (*sql.DB, error) {
 	db, err := sql.Open("pgx", addr)
 
 	if err != nil {
@@ -18,17 +24,10 @@ func NewPostgresDB(addr string, maxOpenConnection int, maxIdleConnections int, m
 	db.SetMaxOpenConns(maxOpenConnection)
 	db.SetMaxIdleConns(maxIdleConnections)
 
-	duration, err := time.ParseDuration(maxConnectionIdleTime)
-
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	db.SetConnMaxIdleTime(duration)
+	db.SetConnMaxIdleTime(maxConnectionIdleTime)
 	db.SetConnMaxLifetime(30 * time.Minute)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
