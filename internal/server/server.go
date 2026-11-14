@@ -30,6 +30,8 @@ func New(deps Dependencies) http.Handler {
 		jobHandler := jobHandler.NewHandler(jobService)
 		r.Route("/jobs", func(r chi.Router) {
 			r.Post("/", middleware.ValidatePayload[jobDtos.QueueJobPayload](jobHandler.QueueJob))
+
+			r.Get("/{id}", jobHandler.GetJobByID)
 		})
 	})
 
