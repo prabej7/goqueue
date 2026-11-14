@@ -21,4 +21,6 @@ migrate-force:
 	@echo "Forcing migration version..."
 	@migrate -path $(MIGRATION_DIR) -database $(DATABASE_URL) force $(filter-out $@,$(MAKECMDGOALS))
 		
-
+test:
+	@echo "Running tests..."
+	@go test ./...
