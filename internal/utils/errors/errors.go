@@ -30,3 +30,9 @@ func InternalServerError(w http.ResponseWriter, err error) error {
 		Message: "internal server error",
 	})
 }
+
+func NotFoundError(w http.ResponseWriter, message string) error {
+	return response.SendResponse(w, http.StatusNotFound, &response.Response{
+		Message: message,
+	})
+}
