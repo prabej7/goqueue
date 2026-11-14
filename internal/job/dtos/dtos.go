@@ -1,4 +1,4 @@
-package handler
+package dtos
 
 import "encoding/json"
 
