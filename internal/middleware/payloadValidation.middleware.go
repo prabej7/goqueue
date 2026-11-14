@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	"github.com/gorilla/schema"
 	apperrors "github.com/prabej7/goqueue/internal/utils/errors"
 )
 
@@ -77,4 +79,22 @@ func buildValidationErrorMessage(validationErrors validator.ValidationErrors) ma
 func GetPayload[T any](r *http.Request) T {
 	payload := r.Context().Value(BodyKey).(T)
 	return payload
+}
+
+func GetParams[T any](r *http.Request) T {
+	var params T
+
+	decoder := schema.NewDecoder()
+	routeParams := chi.RouteContext(r.Context()).URLParams
+	values := make(map[string][]string, len(routeParams.Keys))
+	
+	for i, key := range routeParams.Keys {
+		values[key] = []string{routeParams.Values[i]}
+	}
+
+	if err := decoder.Decode(&params, values); err != nil {
+		return params
+	}
+
+	return params
 }
