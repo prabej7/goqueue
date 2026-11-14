@@ -47,6 +47,6 @@ func (s *Service) CreateJob(ctx context.Context, job *CreateJobInput) (*model.Jo
 	return createJob, nil
 }
 
-func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*model.Job, error) {
+func (s *Service) GetByID(ctx context.Context, id string) (*model.Job, error) {
 	return s.repo.GetByID(ctx, id)
 }
