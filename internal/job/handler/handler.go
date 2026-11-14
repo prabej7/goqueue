@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/prabej7/goqueue/internal/job/dtos"
+	"github.com/prabej7/goqueue/internal/job/repository"
 	"github.com/prabej7/goqueue/internal/job/service"
 	"github.com/prabej7/goqueue/internal/middleware"
 	apperrors "github.com/prabej7/goqueue/internal/utils/errors"
@@ -38,5 +39,27 @@ func (h *Handler) QueueJob(w http.ResponseWriter, r *http.Request) {
 	response.SendResponse(w, http.StatusCreated, &response.Response{
 		Message: "job queued successfully",
 		Data:    createdJob,
+	})
+}
+
+func (h *Handler) GetJobByID(w http.ResponseWriter, r *http.Request) {
+	id := middleware.GetParams[dtos.GetJobParams](r).ID
+	ctx := r.Context()
+
+	job, err := h.service.GetByID(ctx, id)
+	if err != nil {
+		switch err {
+		case repository.ErrJobNotFound:
+			apperrors.NotFoundError(w, "job not found")
+			return
+		default:
+			apperrors.InternalServerError(w, err)
+			return
+		}
+	}
+
+	response.SendResponse(w, http.StatusOK, &response.Response{
+		Message: "job retrived successfully",
+		Data:    job,
 	})
 }
