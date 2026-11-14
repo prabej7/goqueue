@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/prabej7/goqueue/internal/job/dtos"
 	"github.com/prabej7/goqueue/internal/job/service"
 	"github.com/prabej7/goqueue/internal/middleware"
 	apperrors "github.com/prabej7/goqueue/internal/utils/errors"
@@ -20,7 +21,7 @@ func NewHandler(service *service.Service) *Handler {
 }
 
 func (h *Handler) QueueJob(w http.ResponseWriter, r *http.Request) {
-	payload := middleware.GetPayload[QueueJobPayload](r)
+	payload := middleware.GetPayload[dtos.QueueJobPayload](r)
 	ctx := r.Context()
 
 	createdJob, err := h.service.CreateJob(ctx, &service.CreateJobInput{
