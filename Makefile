@@ -24,3 +24,7 @@ migrate-force:
 test:
 	@echo "Running tests..."
 	@go test ./...
+
+build:
+	@echo "building..."
+	@go build -o ./bin/main ./cmd/api/main.go
