@@ -7,3 +7,7 @@ type QueueJobPayload struct {
 	Payload  json.RawMessage `json:"payload" validate:"required"`
 	Priority int             `json:"priority" validate:"required"`
 }
+
+type GetJobParams struct {
+	ID string `json:"id"`
+}
