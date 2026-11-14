@@ -114,8 +114,13 @@ func TestJobRepository_Create(t *testing.T) {
 		ScheduledAt: time.Now(),
 	}
 
-	if err := repo.Create(ctx, &job); err != nil {
+	createdJob, err := repo.Create(ctx, &job)
+	if err != nil {
 		t.Fatalf("failed to create job: %v", err)
+	}
+
+	if createdJob == nil {
+		t.Fatal("createdJob must not be nil")
 	}
 
 	got, err := repo.GetByID(ctx, id)
@@ -179,11 +184,59 @@ func TestJobRepository_GetByID_NotFound(t *testing.T) {
 
 	id := uuid.New()
 
-	_, err := repo.GetByID(ctx, id)
+	job, err := repo.GetByID(ctx, id)
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("expected ErrJobNotFound, got %v", err)
+	}
+
+	if job != nil {
+		t.Fatalf("job should be nil but got: %+v", job)
+	}
+}
+
+func TestJobRepository_Create_DuplicateID(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	id := uuid.New()
+	job := model.Job{
+		ID:          id,
+		Type:        "test",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		Priority:    1,
+		Attempts:    0,
+		MaxAttempts: 3,
+		ScheduledAt: time.Now(),
+	}
+
+	createdJob, err := repo.Create(ctx, &job)
 	if err != nil {
-		if !errors.Is(err, ErrJobNotFound) {
-			t.Errorf("expected ErrJobNotFound, got %v", err)
-			return
-		}
+		t.Fatalf("error in Create() %+v", err)
+	}
+
+	if createdJob == nil {
+		t.Fatalf("createdJob must not be nil")
+	}
+
+	job2 := model.Job{
+		ID:          id,
+		Type:        "test1",
+		Payload:     json.RawMessage(`{"message":"hello1"}`),
+		Status:      model.JobStatusPending,
+		Priority:    2,
+		Attempts:    0,
+		MaxAttempts: 5,
+		ScheduledAt: time.Now(),
+	}
+
+	createdJob2, err := repo.Create(ctx, &job2)
+	if err == nil {
+		t.Fatalf("must throw error on duplicate uuid")
+	}
+
+	if createdJob2 != nil {
+		t.Fatalf("createdJob2 must be nill as that would duplicate")
 	}
 }
