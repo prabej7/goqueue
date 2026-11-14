@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/google/uuid"
 	"github.com/prabej7/goqueue/internal/job/model"
 )
 
@@ -54,7 +53,7 @@ func (r *JobRepository) Create(
 	return job, nil
 }
 
-func (r *JobRepository) GetByID(ctx context.Context, ID uuid.UUID) (*model.Job, error) {
+func (r *JobRepository) GetByID(ctx context.Context, ID string) (*model.Job, error) {
 	query := `
 		SELECT
 			id,
