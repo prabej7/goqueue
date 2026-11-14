@@ -28,9 +28,9 @@ func (m *mockJobRepository) Create(ctx context.Context, job *model.Job) (*model.
 	return job, nil
 }
 
-func (m *mockJobRepository) GetByID(ctx context.Context, ID uuid.UUID) (*model.Job, error) {
+func (m *mockJobRepository) GetByID(ctx context.Context, ID string) (*model.Job, error) {
 	for _, job := range m.jobs {
-		if job.ID == ID {
+		if job.ID.String() == ID {
 			return job, nil
 		}
 	}
@@ -187,7 +187,7 @@ func TestService_GetByID(t *testing.T) {
 		t.Fatalf("error on CreateJob(): %+v", err)
 	}
 
-	retrievedJob, err := jobService.GetByID(ctx, createdJob.ID)
+	retrievedJob, err := jobService.GetByID(ctx, createdJob.ID.String())
 	if err != nil {
 		t.Fatalf("error on GetByID(): %+v", err)
 	}
@@ -199,7 +199,7 @@ func TestService_GetByID_NotFound(t *testing.T) {
 	ctx, jobService := newTestService(t)
 
 	nonExistentID := uuid.New()
-	retrievedJob, err := jobService.GetByID(ctx, nonExistentID)
+	retrievedJob, err := jobService.GetByID(ctx, nonExistentID.String())
 
 	if err == nil {
 		t.Fatal("expected an error, got nil")

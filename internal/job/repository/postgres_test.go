@@ -123,7 +123,7 @@ func TestJobRepository_Create(t *testing.T) {
 		t.Fatal("createdJob must not be nil")
 	}
 
-	got, err := repo.GetByID(ctx, id)
+	got, err := repo.GetByID(ctx, id.String())
 	if err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestJobRepository_GetByID_NotFound(t *testing.T) {
 
 	id := uuid.New()
 
-	job, err := repo.GetByID(ctx, id)
+	job, err := repo.GetByID(ctx, id.String())
 	if !errors.Is(err, ErrJobNotFound) {
 		t.Fatalf("expected ErrJobNotFound, got %v", err)
 	}
