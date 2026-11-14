@@ -170,3 +170,20 @@ func TestJobRepository_Create(t *testing.T) {
 		t.Error("UpdatedAt should not be zero")
 	}
 }
+
+func TestJobRepository_GetByID_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+
+	ctx := context.Background()
+
+	id := uuid.New()
+
+	_, err := repo.GetByID(ctx, id)
+	if err != nil {
+		if !errors.Is(err, ErrJobNotFound) {
+			t.Errorf("expected ErrJobNotFound, got %v", err)
+			return
+		}
+	}
+}
