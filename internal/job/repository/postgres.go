@@ -24,7 +24,7 @@ var _ Repository = (*JobRepository)(nil)
 func (r *JobRepository) Create(
 	ctx context.Context,
 	job *model.Job,
-) error {
+) (*model.Job, error) {
 	query := `
 		INSERT INTO jobs
 		(id, job_type, payload, status, priority, attempts, max_attempts, scheduled_at)
@@ -48,10 +48,10 @@ func (r *JobRepository) Create(
 		&job.CreatedAt,
 		&job.UpdatedAt,
 	); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return job, nil
 }
 
 func (r *JobRepository) GetByID(ctx context.Context, ID uuid.UUID) (*model.Job, error) {
