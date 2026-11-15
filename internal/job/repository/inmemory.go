@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/prabej7/goqueue/internal/job/model"
 )
@@ -38,4 +39,52 @@ func (m *MockJobRepository) GetByID(ctx context.Context, ID string) (*model.Job,
 	}
 
 	return nil, ErrJobNotFound
+}
+
+func (m *MockJobRepository) ClaimNextJob(
+	ctx context.Context,
+	payload ClaimNextJobPayload,
+) (*model.Job, error) {
+
+	now := time.Now()
+
+	var selected *model.Job
+
+	for _, job := range m.Jobs {
+		if job.Status != model.JobStatusPending {
+			continue
+		}
+
+		if job.ScheduledAt.After(now) {
+			continue
+		}
+
+		if selected == nil ||
+			job.Priority > selected.Priority ||
+			(job.Priority == selected.Priority &&
+				job.ScheduledAt.Before(selected.ScheduledAt)) ||
+			(job.Priority == selected.Priority &&
+				job.ScheduledAt.Equal(selected.ScheduledAt) &&
+				job.CreatedAt.Before(selected.CreatedAt)) {
+
+			selected = job
+		}
+	}
+
+	if selected == nil {
+		return nil, ErrNoJobsAvailable
+	}
+
+	selected.Status = model.JobStatusProcessing
+	selected.LockedBy = payload.WorkerID.String()
+
+	lockedAt := now
+	selected.LockedAt = lockedAt
+
+	selected.LeaseExpiresAt = payload.LeaseExpiration
+	selected.ClaimToken = payload.ClaimToken.String()
+
+	selected.UpdatedAt = now
+
+	return selected, nil
 }
