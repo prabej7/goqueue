@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -304,6 +306,118 @@ func TestJobRepository_ClaimJob(t *testing.T) {
 		CreatedAt:      job.CreatedAt,
 		UpdatedAt:      job.UpdatedAt,
 	})
+}
+
+func TestJobRepository_ClaimJob_NoJobsAvailable(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	workerId := uuid.New()
+	claimToken := uuid.New()
+	claimJobPayload := ClaimNextJobPayload{
+		WorkerID:        workerId,
+		LeaseExpiration: time.Now().Add(time.Minute * 5),
+		ClaimToken:      claimToken,
+	}
+
+	_, err := repo.ClaimNextJob(ctx, claimJobPayload)
+
+	if !errors.Is(err, ErrNoJobsAvailable) {
+		t.Error("should return ErrNoJobsAvailable")
+	}
+
+}
+
+func TestJobRepository_ConcurrentClaims(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	// Create one pending job.
+	job := &model.Job{
+		ID:          uuid.New(),
+		Type:        "test",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		Priority:    1,
+		Attempts:    0,
+		MaxAttempts: 3,
+		ScheduledAt: time.Now().Add(-time.Minute),
+	}
+
+	_, err := repo.Create(ctx, job)
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
+	}
+
+	const workers = 2
+
+	start := make(chan struct{})
+	results := make(chan error, workers)
+
+	var wg sync.WaitGroup
+
+	for range workers {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			<-start
+
+			payload := ClaimNextJobPayload{
+				WorkerID:        uuid.New(),
+				LeaseExpiration: time.Now().Add(5 * time.Minute),
+				ClaimToken:      uuid.New(),
+			}
+
+			claimedJob, err := repo.ClaimNextJob(ctx, payload)
+
+			if err != nil {
+				results <- err
+				return
+			}
+
+			if claimedJob.ID != job.ID {
+				results <- fmt.Errorf("unexpected job claimed: %s", claimedJob.ID)
+				return
+			}
+
+			results <- nil
+		}()
+	}
+
+	// Release both workers simultaneously.
+	close(start)
+
+	wg.Wait()
+	close(results)
+
+	successfulClaims := 0
+	unavailableClaims := 0
+
+	for err := range results {
+		if err == nil {
+			successfulClaims++
+			continue
+		}
+
+		if errors.Is(err, ErrNoJobsAvailable) {
+			unavailableClaims++
+			continue
+		}
+
+		t.Errorf("unexpected claim error: %v", err)
+	}
+
+	if successfulClaims != 1 {
+		t.Errorf("successful claims = %d, want 1", successfulClaims)
+	}
+
+	if unavailableClaims != 1 {
+		t.Errorf("unavailable claims = %d, want 1", unavailableClaims)
+	}
 }
 
 func assertJobsEqual(t *testing.T, got, want *model.Job) {
