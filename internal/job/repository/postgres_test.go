@@ -240,3 +240,137 @@ func TestJobRepository_Create_DuplicateID(t *testing.T) {
 		t.Fatalf("createdJob2 must be nill as that would duplicate")
 	}
 }
+
+func TestJobRepository_ClaimJob(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	id := uuid.New()
+	job := model.Job{
+		ID:          id,
+		Type:        "test",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		Priority:    1,
+		Attempts:    0,
+		MaxAttempts: 3,
+		ScheduledAt: time.Now(),
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	createdJob, err := repo.Create(ctx, &job)
+
+	if err != nil {
+		t.Fatalf("error in Create() %+v", err)
+	}
+
+	if createdJob == nil {
+		t.Fatalf("createdJob must not be nil")
+	}
+
+	createdJob, err = repo.GetByID(ctx, createdJob.ID.String())
+	if err != nil {
+		t.Fatalf("error on GetByID(): %+v", err)
+	}
+
+	workerId := uuid.New()
+	claimToken := uuid.New()
+	claimJobPayload := ClaimNextJobPayload{
+		WorkerID:        workerId,
+		LeaseExpiration: time.Now().Add(time.Minute * 5),
+		ClaimToken:      claimToken,
+	}
+	claimedJob, err := repo.ClaimNextJob(ctx, claimJobPayload)
+
+	if err != nil {
+		t.Fatalf("should return a job: %+v", err)
+	}
+
+	assertJobsEqual(t, claimedJob, &model.Job{
+		ID:             job.ID,
+		Type:           job.Type,
+		Payload:        job.Payload,
+		Status:         model.JobStatusProcessing,
+		Priority:       job.Priority,
+		Attempts:       job.Attempts,
+		MaxAttempts:    job.MaxAttempts,
+		ScheduledAt:    job.ScheduledAt,
+		LockedBy:       workerId.String(),
+		LockedAt:       claimedJob.LockedAt,
+		LeaseExpiresAt: claimedJob.LeaseExpiresAt,
+		ClaimToken:     claimedJob.ClaimToken,
+		CreatedAt:      job.CreatedAt,
+		UpdatedAt:      job.UpdatedAt,
+	})
+}
+
+func assertJobsEqual(t *testing.T, got, want *model.Job) {
+	t.Helper()
+
+	if got == nil {
+		t.Fatal("got job must not be nil")
+	}
+	if got.ID != want.ID {
+		t.Fatalf("job.ID = %q, want %q", got.ID, want.ID)
+	}
+	if got.Type != want.Type {
+		t.Fatalf("job.Type = %q, want %q", got.Type, want.Type)
+	}
+	var gotPayload, wantPayload any
+
+	if err := json.Unmarshal(got.Payload, &gotPayload); err != nil {
+		t.Fatalf("failed to unmarshal got payload: %v", err)
+	}
+
+	if err := json.Unmarshal(want.Payload, &wantPayload); err != nil {
+		t.Fatalf("failed to unmarshal want payload: %v", err)
+	}
+
+	if !reflect.DeepEqual(gotPayload, wantPayload) {
+		t.Fatalf("job.Payload = %s, want %s", got.Payload, want.Payload)
+	}
+	if got.Priority != want.Priority {
+		t.Fatalf("job.Priority = %d, want %d", got.Priority, want.Priority)
+	}
+	if got.Attempts != want.Attempts {
+		t.Fatalf("job.Attempts = %d, want %d", got.Attempts, want.Attempts)
+	}
+	if got.MaxAttempts != want.MaxAttempts {
+		t.Fatalf("job.MaxAttempts = %d, want %d", got.MaxAttempts, want.MaxAttempts)
+	}
+	if got.Status != want.Status {
+		t.Fatalf("job.Status = %q, want %q", got.Status, want.Status)
+	}
+	if got.LockedBy != want.LockedBy {
+		t.Fatalf("job.LockedBy = %q, want %q", got.LockedBy, want.LockedBy)
+	}
+	if !got.LockedAt.Equal(want.LockedAt) {
+		t.Fatalf("job.LockedAt = %v, want %v", got.LockedAt, want.LockedAt)
+	}
+	if !got.LeaseExpiresAt.Equal(want.LeaseExpiresAt) {
+		t.Fatalf("job.LeaseExpiresAt = %v, want %v", got.LeaseExpiresAt, want.LeaseExpiresAt)
+	}
+	if got.ClaimToken != want.ClaimToken {
+		t.Fatalf("job.ClaimToken = %q, want %q", got.ClaimToken, want.ClaimToken)
+	}
+	if !reflect.DeepEqual(got.Result, want.Result) {
+		t.Fatalf("job.Result = %s, want %s", got.Result, want.Result)
+	}
+	if !got.StartedAt.Equal(want.StartedAt) {
+		t.Fatalf("job.StartedAt = %v, want %v", got.StartedAt, want.StartedAt)
+	}
+	if !got.CompletedAt.Equal(want.CompletedAt) {
+		t.Fatalf("job.CompletedAt = %v, want %v", got.CompletedAt, want.CompletedAt)
+	}
+	if !got.ScheduledAt.Equal(want.ScheduledAt) {
+		t.Fatalf("job.ScheduledAt = %v, want %v", got.ScheduledAt, want.ScheduledAt)
+	}
+	if !got.CreatedAt.Equal(want.CreatedAt) {
+		t.Fatalf("job.CreatedAt = %v, want %v", got.CreatedAt, want.CreatedAt)
+	}
+	if !got.UpdatedAt.Equal(want.UpdatedAt) {
+		t.Fatalf("job.UpdatedAt = %v, want %v", got.UpdatedAt, want.UpdatedAt)
+	}
+}
