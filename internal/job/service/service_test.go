@@ -12,38 +12,8 @@ import (
 	"github.com/prabej7/goqueue/internal/job/service"
 )
 
-type mockJobRepository struct {
-	jobs      []*model.Job
-	createErr error
-}
-
-func (m *mockJobRepository) Create(ctx context.Context, job *model.Job) (*model.Job, error) {
-
-	if m.createErr != nil {
-		return nil, m.createErr
-	}
-
-	m.jobs = append(m.jobs, job)
-
-	return job, nil
-}
-
-func (m *mockJobRepository) GetByID(ctx context.Context, ID string) (*model.Job, error) {
-	for _, job := range m.jobs {
-		if job.ID.String() == ID {
-			return job, nil
-		}
-	}
-
-	return nil, repository.ErrJobNotFound
-}
-
-var _ repository.Repository = (*mockJobRepository)(nil)
-
 func newTestService(t *testing.T) (context.Context, *service.Service) {
-	return t.Context(), service.NewService(&mockJobRepository{
-		jobs: []*model.Job{},
-	})
+	return t.Context(), service.NewService(repository.NewMockRepository())
 }
 
 func assertJobsEqual(t *testing.T, got, want *model.Job) {
@@ -146,8 +116,8 @@ func TestService_CreateJob_RepositoryError(t *testing.T) {
 	expectedErr := errors.New("database connection failed")
 
 	// Configure the mock repository to return an error.
-	mockRepo := &mockJobRepository{
-		createErr: expectedErr,
+	mockRepo := &repository.MockJobRepository{
+		CreateErr: expectedErr,
 	}
 
 	jobService = service.NewService(mockRepo)
