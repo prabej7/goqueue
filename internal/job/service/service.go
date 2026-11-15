@@ -50,3 +50,14 @@ func (s *Service) CreateJob(ctx context.Context, job *CreateJobInput) (*model.Jo
 func (s *Service) GetByID(ctx context.Context, id string) (*model.Job, error) {
 	return s.repo.GetByID(ctx, id)
 }
+
+func (s *Service) ClaimJob(ctx context.Context) (*model.Job, error) {
+	workerId := uuid.New()
+	claimToken := uuid.New()
+	claimJobPayload := repository.ClaimNextJobPayload{
+		WorkerID:        workerId,
+		LeaseExpiration: time.Now().Add(time.Minute * 5),
+		ClaimToken:      claimToken,
+	}
+	return s.repo.ClaimNextJob(ctx, claimJobPayload)
+}
