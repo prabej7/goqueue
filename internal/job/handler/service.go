@@ -11,4 +11,5 @@ import (
 type JobService interface {
 	CreateJob(ctx context.Context, job *service.CreateJobInput) (*model.Job, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Job, error)
+	ClaimJob(ctx context.Context) (*model.Job, error)
 }
