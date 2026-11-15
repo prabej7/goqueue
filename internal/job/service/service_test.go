@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -28,7 +29,17 @@ func assertJobsEqual(t *testing.T, got, want *model.Job) {
 	if got.Type != want.Type {
 		t.Fatalf("job.Type = %q, want %q", got.Type, want.Type)
 	}
-	if string(got.Payload) != string(want.Payload) {
+	var gotPayload, wantPayload any
+
+	if err := json.Unmarshal(got.Payload, &gotPayload); err != nil {
+		t.Fatalf("failed to unmarshal got payload: %v", err)
+	}
+
+	if err := json.Unmarshal(want.Payload, &wantPayload); err != nil {
+		t.Fatalf("failed to unmarshal want payload: %v", err)
+	}
+
+	if !reflect.DeepEqual(gotPayload, wantPayload) {
 		t.Fatalf("job.Payload = %s, want %s", got.Payload, want.Payload)
 	}
 	if got.Priority != want.Priority {
@@ -42,6 +53,27 @@ func assertJobsEqual(t *testing.T, got, want *model.Job) {
 	}
 	if got.Status != want.Status {
 		t.Fatalf("job.Status = %q, want %q", got.Status, want.Status)
+	}
+	if got.LockedBy != want.LockedBy {
+		t.Fatalf("job.LockedBy = %q, want %q", got.LockedBy, want.LockedBy)
+	}
+	if !got.LockedAt.Equal(want.LockedAt) {
+		t.Fatalf("job.LockedAt = %v, want %v", got.LockedAt, want.LockedAt)
+	}
+	if !got.LeaseExpiresAt.Equal(want.LeaseExpiresAt) {
+		t.Fatalf("job.LeaseExpiresAt = %v, want %v", got.LeaseExpiresAt, want.LeaseExpiresAt)
+	}
+	if got.ClaimToken != want.ClaimToken {
+		t.Fatalf("job.ClaimToken = %q, want %q", got.ClaimToken, want.ClaimToken)
+	}
+	if !reflect.DeepEqual(got.Result, want.Result) {
+		t.Fatalf("job.Result = %s, want %s", got.Result, want.Result)
+	}
+	if !got.StartedAt.Equal(want.StartedAt) {
+		t.Fatalf("job.StartedAt = %v, want %v", got.StartedAt, want.StartedAt)
+	}
+	if !got.CompletedAt.Equal(want.CompletedAt) {
+		t.Fatalf("job.CompletedAt = %v, want %v", got.CompletedAt, want.CompletedAt)
 	}
 	if !got.ScheduledAt.Equal(want.ScheduledAt) {
 		t.Fatalf("job.ScheduledAt = %v, want %v", got.ScheduledAt, want.ScheduledAt)
@@ -183,4 +215,39 @@ func TestService_GetByID_NotFound(t *testing.T) {
 		t.Fatalf("expected nil job, got %+v", retrievedJob)
 	}
 
+}
+
+func TestService_ClaimJob(t *testing.T) {
+	ctx, jobService := newTestService(t)
+
+	jobPayload := &service.CreateJobInput{
+		JobType:  "test",
+		Payload:  json.RawMessage(`{"message":"Hello"}`),
+		Priority: 1,
+	}
+
+	createdJob, err := jobService.CreateJob(ctx, jobPayload)
+	if err != nil {
+		t.Fatalf("error on CreateJob(): %+v", err)
+	}
+
+	if createdJob == nil {
+		t.Fatal("should return a  job")
+	}
+
+	createdJob, err = jobService.GetByID(ctx, createdJob.ID.String())
+	if err != nil {
+		t.Fatalf("error on GetByID(): %+v", err)
+	}
+
+	claimedJob, err := jobService.ClaimJob(ctx)
+	if err != nil {
+		t.Fatalf("error on ClaimJob(): %+v", err)
+	}
+
+	if claimedJob == nil {
+		t.Fatal("claimedJob must not be nil")
+	}
+
+	assertJobsEqual(t, claimedJob, createdJob)
 }
