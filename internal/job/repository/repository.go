@@ -20,4 +20,10 @@ type Repository interface {
 	CompleteJob(ctx context.Context, ID uuid.UUID, claimToken string) error
 	FailJob(ctx context.Context, ID uuid.UUID, claimToken string) error
 	ClaimNextJob(ctx context.Context, payload ClaimNextJobPayload) (*model.Job, error)
+	UpdateLastError(
+		ctx context.Context,
+		ID uuid.UUID,
+		claimToken string,
+		err string,
+	) error
 }
