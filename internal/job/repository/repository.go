@@ -16,6 +16,8 @@ type ClaimNextJobPayload struct {
 
 type Repository interface {
 	Create(ctx context.Context, job *model.Job) (*model.Job, error)
-	GetByID(ctx context.Context, ID string) (*model.Job, error)
+	GetByID(ctx context.Context, ID uuid.UUID) (*model.Job, error)
+	CompleteJob(ctx context.Context, ID uuid.UUID, claimToken string) error
+	FailJob(ctx context.Context, ID uuid.UUID, claimToken string) error
 	ClaimNextJob(ctx context.Context, payload ClaimNextJobPayload) (*model.Job, error)
 }
