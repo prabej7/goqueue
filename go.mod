@@ -4,7 +4,9 @@ go 1.26.5
 
 require (
 	github.com/go-chi/chi/v5 v5.5.0
+	github.com/go-playground/validator/v10 v10.30.6
 	github.com/golang-migrate/migrate/v4 v4.20.1
+	github.com/gorilla/schema v1.4.1
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.45.0
@@ -32,8 +34,6 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-playground/locales v0.14.2 // indirect
 	github.com/go-playground/universal-translator v0.18.2 // indirect
-	github.com/go-playground/validator/v10 v10.30.6 // indirect
-	github.com/gorilla/schema v1.4.1 // indirect
 	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
