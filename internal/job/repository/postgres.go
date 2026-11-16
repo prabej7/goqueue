@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/prabej7/goqueue/internal/job/model"
 	"github.com/prabej7/goqueue/internal/utils/db"
 )
@@ -54,7 +55,10 @@ func (r *JobRepository) Create(
 	return job, nil
 }
 
-func (r *JobRepository) GetByID(ctx context.Context, ID string) (*model.Job, error) {
+func (r *JobRepository) GetByID(
+	ctx context.Context,
+	ID uuid.UUID,
+) (*model.Job, error) {
 	query := `
 		SELECT
 			id,
@@ -65,13 +69,23 @@ func (r *JobRepository) GetByID(ctx context.Context, ID string) (*model.Job, err
 			attempts,
 			max_attempts,
 			scheduled_at,
+			locked_by,
+			locked_at,
+			lease_expires_at,
+			claim_token,
+			result,
+			last_error,
+			started_at,
+			completed_at,
 			created_at,
 			updated_at
 		FROM jobs
 		WHERE id = $1
 	`
+
 	job := &model.Job{}
-	if err := r.db.QueryRowContext(
+
+	err := r.db.QueryRowContext(
 		ctx,
 		query,
 		ID,
@@ -84,9 +98,19 @@ func (r *JobRepository) GetByID(ctx context.Context, ID string) (*model.Job, err
 		&job.Attempts,
 		&job.MaxAttempts,
 		&job.ScheduledAt,
+		&job.LockedBy,
+		&job.LockedAt,
+		&job.LeaseExpiresAt,
+		&job.ClaimToken,
+		&job.Result,
+		&job.LastError,
+		&job.StartedAt,
+		&job.CompletedAt,
 		&job.CreatedAt,
 		&job.UpdatedAt,
-	); err != nil {
+	)
+
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrJobNotFound
 		}
@@ -112,6 +136,14 @@ func (r *JobRepository) ClaimNextJob(
 				attempts,
 				max_attempts,
 				scheduled_at,
+				locked_by,
+				locked_at, 
+				lease_expires_at,
+				claim_token,
+				result,
+				last_error,
+				started_at,
+				completed_at,
 				created_at,
 				updated_at
 			FROM jobs
@@ -131,6 +163,14 @@ func (r *JobRepository) ClaimNextJob(
 			&job.Attempts,
 			&job.MaxAttempts,
 			&job.ScheduledAt,
+			&job.LockedBy,
+			&job.LockedAt,
+			&job.LeaseExpiresAt,
+			&job.ClaimToken,
+			&job.Result,
+			&job.LastError,
+			&job.StartedAt,
+			&job.CompletedAt,
 			&job.CreatedAt,
 			&job.UpdatedAt,
 		)
@@ -175,4 +215,71 @@ func (r *JobRepository) ClaimNextJob(
 
 		return &job, nil
 	})
+}
+
+func (r *JobRepository) CompleteJob(
+	ctx context.Context,
+	ID uuid.UUID,
+	claimToken string,
+) error {
+	return r.updateClaimedJobStatus(
+		ctx,
+		ID,
+		model.JobStatusCompleted,
+		claimToken,
+	)
+}
+
+func (r *JobRepository) FailJob(ctx context.Context,
+	ID uuid.UUID,
+	claimToken string,
+) error {
+	return r.updateClaimedJobStatus(
+		ctx,
+		ID,
+		model.JobStatusFailed,
+		claimToken,
+	)
+}
+
+func (r *JobRepository) updateClaimedJobStatus(
+	ctx context.Context,
+	ID uuid.UUID,
+	status model.JobStatus,
+	claimToken string,
+) error {
+	query := `
+		UPDATE jobs
+		SET 
+			status = $2,
+			updated_at = NOW()
+		WHERE 
+			id = $1
+			AND status = 'processing'
+			AND claim_token = $3
+	`
+
+	res, err := r.db.ExecContext(
+		ctx,
+		query,
+		ID,
+		status,
+		claimToken,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		return ErrJobClaimLost
+	}
+
+	return nil
+
 }
