@@ -23,7 +23,7 @@ migrate-force:
 		
 test:
 	@echo "Running tests..."
-	@go test ./...
+	@set -o pipefail; go test ./... | grep -v '\[no test files\]'
 
 build:
 	@echo "building..."
