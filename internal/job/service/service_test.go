@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/prabej7/goqueue/internal/job/model"
@@ -22,6 +23,18 @@ func assertJobsEqual(t *testing.T, got, want *model.Job) {
 
 	if got == nil {
 		t.Fatal("got job must not be nil")
+	}
+	if want == nil {
+		t.Fatal("want job must not be nil")
+	}
+	assertTimesEqual := func(name string, got, want *time.Time) {
+		t.Helper()
+		if (got == nil) != (want == nil) {
+			t.Fatalf("job.%s nilness differs: got %v, want %v", name, got == nil, want == nil)
+		}
+		if got != nil && !got.Equal(*want) {
+			t.Fatalf("job.%s = %v, want %v", name, got, want)
+		}
 	}
 	if got.ID != want.ID {
 		t.Fatalf("job.ID = %q, want %q", got.ID, want.ID)
@@ -55,26 +68,18 @@ func assertJobsEqual(t *testing.T, got, want *model.Job) {
 		t.Fatalf("job.Status = %q, want %q", got.Status, want.Status)
 	}
 	if got.LockedBy != want.LockedBy {
-		t.Fatalf("job.LockedBy = %q, want %q", got.LockedBy, want.LockedBy)
+		t.Fatalf("job.LockedBy = %v, want %v", got.LockedBy, want.LockedBy)
 	}
-	if !got.LockedAt.Equal(want.LockedAt) {
-		t.Fatalf("job.LockedAt = %v, want %v", got.LockedAt, want.LockedAt)
-	}
-	if !got.LeaseExpiresAt.Equal(want.LeaseExpiresAt) {
-		t.Fatalf("job.LeaseExpiresAt = %v, want %v", got.LeaseExpiresAt, want.LeaseExpiresAt)
-	}
+	assertTimesEqual("LockedAt", got.LockedAt, want.LockedAt)
+	assertTimesEqual("LeaseExpiresAt", got.LeaseExpiresAt, want.LeaseExpiresAt)
 	if got.ClaimToken != want.ClaimToken {
-		t.Fatalf("job.ClaimToken = %q, want %q", got.ClaimToken, want.ClaimToken)
+		t.Fatalf("job.ClaimToken = %v, want %v", got.ClaimToken, want.ClaimToken)
 	}
 	if !reflect.DeepEqual(got.Result, want.Result) {
 		t.Fatalf("job.Result = %s, want %s", got.Result, want.Result)
 	}
-	if !got.StartedAt.Equal(want.StartedAt) {
-		t.Fatalf("job.StartedAt = %v, want %v", got.StartedAt, want.StartedAt)
-	}
-	if !got.CompletedAt.Equal(want.CompletedAt) {
-		t.Fatalf("job.CompletedAt = %v, want %v", got.CompletedAt, want.CompletedAt)
-	}
+	assertTimesEqual("StartedAt", got.StartedAt, want.StartedAt)
+	assertTimesEqual("CompletedAt", got.CompletedAt, want.CompletedAt)
 	if !got.ScheduledAt.Equal(want.ScheduledAt) {
 		t.Fatalf("job.ScheduledAt = %v, want %v", got.ScheduledAt, want.ScheduledAt)
 	}
@@ -189,7 +194,7 @@ func TestService_GetByID(t *testing.T) {
 		t.Fatalf("error on CreateJob(): %+v", err)
 	}
 
-	retrievedJob, err := jobService.GetByID(ctx, createdJob.ID.String())
+	retrievedJob, err := jobService.GetByID(ctx, createdJob.ID)
 	if err != nil {
 		t.Fatalf("error on GetByID(): %+v", err)
 	}
@@ -201,7 +206,7 @@ func TestService_GetByID_NotFound(t *testing.T) {
 	ctx, jobService := newTestService(t)
 
 	nonExistentID := uuid.New()
-	retrievedJob, err := jobService.GetByID(ctx, nonExistentID.String())
+	retrievedJob, err := jobService.GetByID(ctx, nonExistentID)
 
 	if err == nil {
 		t.Fatal("expected an error, got nil")
@@ -235,7 +240,7 @@ func TestService_ClaimJob(t *testing.T) {
 		t.Fatal("should return a  job")
 	}
 
-	createdJob, err = jobService.GetByID(ctx, createdJob.ID.String())
+	createdJob, err = jobService.GetByID(ctx, createdJob.ID)
 	if err != nil {
 		t.Fatalf("error on GetByID(): %+v", err)
 	}
