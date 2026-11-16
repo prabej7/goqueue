@@ -474,6 +474,47 @@ func TestJobRepository_CompleteJob(t *testing.T) {
 	}
 }
 
+func TestJobRepository_ClaimJob_StaleClaimToken(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	// Create one pending job.
+	job := &model.Job{
+		ID:          uuid.New(),
+		Type:        "test",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		Priority:    1,
+		Attempts:    0,
+		MaxAttempts: 3,
+		ScheduledAt: time.Now().Add(-time.Minute),
+	}
+
+	_, err := repo.Create(ctx, job)
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
+	}
+
+	workerId := uuid.New()
+	claimToken := uuid.New()
+	claimJobPayload := ClaimNextJobPayload{
+		WorkerID:        workerId,
+		LeaseExpiration: time.Now().Add(time.Minute * 5),
+		ClaimToken:      claimToken,
+	}
+
+	_, err = repo.ClaimNextJob(ctx, claimJobPayload)
+	if err != nil {
+		t.Errorf("error on ClaimJob(): %+v", err)
+	}
+
+	claimToken = uuid.New()
+	if err := repo.CompleteJob(ctx, job.ID, claimToken.String()); !errors.Is(err, ErrJobClaimLost) {
+		t.Errorf("expected ErrJobClaimLost, got: %+v", err)
+	}
+}
+
 func TestJobRepository_FailJob(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewJobRepository(db)
