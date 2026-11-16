@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/prabej7/goqueue/internal/job/model"
 )
 
@@ -31,9 +32,9 @@ func (m *MockJobRepository) Create(ctx context.Context, job *model.Job) (*model.
 	return job, nil
 }
 
-func (m *MockJobRepository) GetByID(ctx context.Context, ID string) (*model.Job, error) {
+func (m *MockJobRepository) GetByID(ctx context.Context, ID uuid.UUID) (*model.Job, error) {
 	for _, job := range m.Jobs {
-		if job.ID.String() == ID {
+		if job.ID == ID {
 			return job, nil
 		}
 	}
@@ -76,15 +77,59 @@ func (m *MockJobRepository) ClaimNextJob(
 	}
 
 	selected.Status = model.JobStatusProcessing
-	selected.LockedBy = payload.WorkerID.String()
+	lockedBy := payload.WorkerID.String()
+	selected.LockedBy = &lockedBy
 
 	lockedAt := now
-	selected.LockedAt = lockedAt
+	selected.LockedAt = &lockedAt
 
-	selected.LeaseExpiresAt = payload.LeaseExpiration
-	selected.ClaimToken = payload.ClaimToken.String()
+	selected.LeaseExpiresAt = &payload.LeaseExpiration
+	claimToken := payload.ClaimToken.String()
+	selected.ClaimToken = &claimToken
 
 	selected.UpdatedAt = now
 
 	return selected, nil
+}
+
+func (m *MockJobRepository) CompleteJob(ctx context.Context, ID uuid.UUID, claimToken string) error {
+	return m.updateClaimedJobStatus(
+		ctx,
+		ID,
+		model.JobStatusCompleted,
+		claimToken,
+	)
+}
+
+func (m *MockJobRepository) FailJob(
+	ctx context.Context,
+	ID uuid.UUID,
+	claimToken string,
+) error {
+	return m.updateClaimedJobStatus(
+		ctx,
+		ID,
+		model.JobStatusFailed,
+		claimToken,
+	)
+}
+
+func (m *MockJobRepository) updateClaimedJobStatus(
+	ctx context.Context,
+	ID uuid.UUID,
+	status model.JobStatus,
+	claimToken string,
+) error {
+	job, err := m.GetByID(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	if job.ClaimToken == &claimToken {
+		job.Status = status
+	} else {
+		return ErrJobClaimLost
+	}
+
+	return nil
 }
