@@ -133,3 +133,23 @@ func (m *MockJobRepository) updateClaimedJobStatus(
 
 	return nil
 }
+
+func (m *MockJobRepository) UpdateLastError(
+	ctx context.Context,
+	ID uuid.UUID,
+	claimToken string,
+	lastError string,
+) error {
+	job, err := m.GetByID(ctx, ID)
+	if err != nil {
+		return err
+	}
+
+	if job.ClaimToken != &claimToken {
+		return ErrJobClaimLost
+	}
+
+	job.LastError = &lastError
+
+	return nil
+}
