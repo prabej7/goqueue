@@ -1,6 +1,10 @@
 package dtos
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/google/uuid"
+)
 
 type QueueJobPayload struct {
 	JobType  string          `json:"job_type" validate:"required"`
@@ -9,5 +13,5 @@ type QueueJobPayload struct {
 }
 
 type GetJobParams struct {
-	ID string `json:"id"`
+	ID uuid.UUID `json:"id"`
 }
