@@ -283,3 +283,41 @@ func (r *JobRepository) updateClaimedJobStatus(
 	return nil
 
 }
+
+func (r *JobRepository) UpdateLastError(
+	ctx context.Context,
+	ID uuid.UUID,
+	claimToken string,
+	lastErr string,
+) error {
+	query := `
+		UPDATE jobs
+		SET last_error = $3
+		WHERE
+			id = $1
+			AND claim_token = $2;
+	`
+
+	result, err := r.db.ExecContext(
+		ctx,
+		query,
+		ID,
+		claimToken,
+		lastErr,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		return ErrJobClaimLost
+	}
+
+	return nil
+}
