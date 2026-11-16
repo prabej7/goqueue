@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sync"
@@ -23,9 +25,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func setupTestDB(t *testing.T) *sql.DB {
-	t.Helper()
+var testDB *sql.DB
 
+func TestMain(m *testing.M) {
 	ctx := context.Background()
 
 	container, err := tcpostgres.Run(
@@ -40,62 +42,61 @@ func setupTestDB(t *testing.T) *sql.DB {
 				WithStartupTimeout(5*time.Minute),
 		),
 	)
-
 	if err != nil {
-		t.Fatalf("failed to start postgres container: %v", err)
+		log.Fatalf("failed to start postgres container: %v", err)
 	}
 
 	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		t.Fatalf("failed to get connection string: %v", err)
+		log.Fatalf("failed to get connection string: %v", err)
 	}
 
 	migrationPath, err := filepath.Abs("../../../migrations")
 	if err != nil {
-		t.Fatalf("failed to resolve migrations path: %v", err)
+		log.Fatalf("failed to resolve migrations path: %v", err)
 	}
+	migrationURL := "file://" + filepath.ToSlash(migrationPath)
 
-	migrationPath = filepath.ToSlash(migrationPath)
-	migrationURL := "file://" + migrationPath
-
-	m, err := migrate.New(migrationURL, connStr)
+	m2, err := migrate.New(migrationURL, connStr)
 	if err != nil {
-		t.Fatalf("failed to initialize migrations: %v", err)
+		log.Fatalf("failed to initialize migrations: %v", err)
 	}
-
-	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		t.Fatalf("failed to run migrations: %v", err)
+	if err := m2.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		log.Fatalf("failed to run migrations: %v", err)
 	}
-
-	sourceErr, databaseErr := m.Close()
-	if sourceErr != nil || databaseErr != nil {
-		t.Fatalf("failed to close migration resources: source=%v database=%v", sourceErr, databaseErr)
+	if sErr, dErr := m2.Close(); sErr != nil || dErr != nil {
+		log.Fatalf("failed to close migration resources: source=%v database=%v", sErr, dErr)
 	}
 
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
+		log.Fatalf("failed to open database: %v", err)
 	}
-
 	if err := db.PingContext(ctx); err != nil {
-		t.Fatalf("failed to ping database: %v", err)
+		log.Fatalf("failed to ping database: %v", err)
 	}
 
-	t.Cleanup(func() {
-		_ = db.Close()
+	testDB = db
 
-		terminateCtx, cancel := context.WithTimeout(
-			context.Background(),
-			10*time.Second,
-		)
-		defer cancel()
+	code := m.Run()
 
-		if err := container.Terminate(terminateCtx); err != nil {
-			t.Errorf("failed to terminate postgres container: %v", err)
-		}
-	})
+	_ = db.Close()
+	terminateCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := container.Terminate(terminateCtx); err != nil {
+		log.Printf("failed to terminate postgres container: %v", err)
+	}
 
-	return db
+	os.Exit(code)
+}
+
+// setupTestDB now just returns the shared DB and resets rows for isolation.
+func setupTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	if _, err := testDB.Exec(`TRUNCATE TABLE jobs RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatalf("failed to truncate jobs: %v", err)
+	}
+	return testDB
 }
 
 func TestJobRepository_Create(t *testing.T) {
@@ -125,7 +126,7 @@ func TestJobRepository_Create(t *testing.T) {
 		t.Fatal("createdJob must not be nil")
 	}
 
-	got, err := repo.GetByID(ctx, id.String())
+	got, err := repo.GetByID(ctx, id)
 	if err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
@@ -186,7 +187,7 @@ func TestJobRepository_GetByID_NotFound(t *testing.T) {
 
 	id := uuid.New()
 
-	job, err := repo.GetByID(ctx, id.String())
+	job, err := repo.GetByID(ctx, id)
 	if !errors.Is(err, ErrJobNotFound) {
 		t.Fatalf("expected ErrJobNotFound, got %v", err)
 	}
@@ -272,7 +273,7 @@ func TestJobRepository_ClaimJob(t *testing.T) {
 		t.Fatalf("createdJob must not be nil")
 	}
 
-	createdJob, err = repo.GetByID(ctx, createdJob.ID.String())
+	createdJob, err = repo.GetByID(ctx, createdJob.ID)
 	if err != nil {
 		t.Fatalf("error on GetByID(): %+v", err)
 	}
@@ -290,6 +291,7 @@ func TestJobRepository_ClaimJob(t *testing.T) {
 		t.Fatalf("should return a job: %+v", err)
 	}
 
+	lockedBy := workerId.String()
 	assertJobsEqual(t, claimedJob, &model.Job{
 		ID:             job.ID,
 		Type:           job.Type,
@@ -299,7 +301,7 @@ func TestJobRepository_ClaimJob(t *testing.T) {
 		Attempts:       job.Attempts,
 		MaxAttempts:    job.MaxAttempts,
 		ScheduledAt:    job.ScheduledAt,
-		LockedBy:       workerId.String(),
+		LockedBy:       &lockedBy,
 		LockedAt:       claimedJob.LockedAt,
 		LeaseExpiresAt: claimedJob.LeaseExpiresAt,
 		ClaimToken:     claimedJob.ClaimToken,
@@ -420,31 +422,136 @@ func TestJobRepository_ConcurrentClaims(t *testing.T) {
 	}
 }
 
+func TestJobRepository_CompleteJob(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	// Create one pending job.
+	job := &model.Job{
+		ID:          uuid.New(),
+		Type:        "test",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		Priority:    1,
+		Attempts:    0,
+		MaxAttempts: 3,
+		ScheduledAt: time.Now().Add(-time.Minute),
+	}
+
+	_, err := repo.Create(ctx, job)
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
+	}
+
+	//claimJob
+	workerId := uuid.New()
+	claimToken := uuid.New()
+	claimJobPayload := ClaimNextJobPayload{
+		WorkerID:        workerId,
+		LeaseExpiration: time.Now().Add(time.Minute * 5),
+		ClaimToken:      claimToken,
+	}
+
+	_, err = repo.ClaimNextJob(ctx, claimJobPayload)
+	if err != nil {
+		t.Errorf("error on ClaimJob(): %+v", err)
+	}
+
+	if err := repo.CompleteJob(ctx, job.ID, claimToken.String()); err != nil {
+		t.Errorf("error on CompleteJob(): %+v", err)
+	}
+
+	createdJob, err := repo.GetByID(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("failed to GetByID job: %v", err)
+	}
+
+	t.Log("claimToken:", createdJob.ClaimToken)
+
+	if createdJob.Status != model.JobStatusCompleted {
+		t.Errorf("expected 'completed', got: %s", createdJob.Status)
+	}
+}
+
+func TestJobRepository_FailJob(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	// Create one pending job.
+	job := &model.Job{
+		ID:          uuid.New(),
+		Type:        "test",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		Priority:    1,
+		Attempts:    0,
+		MaxAttempts: 3,
+		ScheduledAt: time.Now().Add(-time.Minute),
+	}
+
+	_, err := repo.Create(ctx, job)
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
+	}
+
+	//claimJob
+	workerId := uuid.New()
+	claimToken := uuid.New()
+	claimJobPayload := ClaimNextJobPayload{
+		WorkerID:        workerId,
+		LeaseExpiration: time.Now().Add(time.Minute * 5),
+		ClaimToken:      claimToken,
+	}
+
+	claimedJob, err := repo.ClaimNextJob(ctx, claimJobPayload)
+	if err != nil {
+		t.Errorf("error on ClaimJob(): %+v", err)
+	}
+
+	if err := repo.FailJob(ctx, job.ID, *claimedJob.ClaimToken); err != nil {
+		t.Errorf("error on CompleteJob(): %+v", err)
+	}
+
+	createdJob, err := repo.GetByID(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("failed to GetByID job: %v", err)
+	}
+
+	if createdJob.Status != model.JobStatusFailed {
+		t.Errorf("expected 'completed', got: %s", createdJob.Status)
+	}
+}
+
 func assertJobsEqual(t *testing.T, got, want *model.Job) {
 	t.Helper()
 
 	if got == nil {
 		t.Fatal("got job must not be nil")
 	}
+	if want == nil {
+		t.Fatal("want job must not be nil")
+	}
+
 	if got.ID != want.ID {
 		t.Fatalf("job.ID = %q, want %q", got.ID, want.ID)
 	}
 	if got.Type != want.Type {
 		t.Fatalf("job.Type = %q, want %q", got.Type, want.Type)
 	}
-	var gotPayload, wantPayload any
 
+	var gotPayload, wantPayload any
 	if err := json.Unmarshal(got.Payload, &gotPayload); err != nil {
 		t.Fatalf("failed to unmarshal got payload: %v", err)
 	}
-
 	if err := json.Unmarshal(want.Payload, &wantPayload); err != nil {
 		t.Fatalf("failed to unmarshal want payload: %v", err)
 	}
-
 	if !reflect.DeepEqual(gotPayload, wantPayload) {
 		t.Fatalf("job.Payload = %s, want %s", got.Payload, want.Payload)
 	}
+
 	if got.Priority != want.Priority {
 		t.Fatalf("job.Priority = %d, want %d", got.Priority, want.Priority)
 	}
@@ -457,34 +564,55 @@ func assertJobsEqual(t *testing.T, got, want *model.Job) {
 	if got.Status != want.Status {
 		t.Fatalf("job.Status = %q, want %q", got.Status, want.Status)
 	}
-	if got.LockedBy != want.LockedBy {
-		t.Fatalf("job.LockedBy = %q, want %q", got.LockedBy, want.LockedBy)
+
+	// *string
+	if (got.LockedBy == nil) != (want.LockedBy == nil) {
+		t.Fatalf("job.LockedBy nil-ness mismatch: got %v, want %v", got.LockedBy, want.LockedBy)
 	}
-	if !got.LockedAt.Equal(want.LockedAt) {
-		t.Fatalf("job.LockedAt = %v, want %v", got.LockedAt, want.LockedAt)
+	if want.LockedBy != nil && *got.LockedBy != *want.LockedBy {
+		t.Fatalf("job.LockedBy = %q, want %q", *got.LockedBy, *want.LockedBy)
 	}
-	if !got.LeaseExpiresAt.Equal(want.LeaseExpiresAt) {
-		t.Fatalf("job.LeaseExpiresAt = %v, want %v", got.LeaseExpiresAt, want.LeaseExpiresAt)
+
+	// *time.Time
+	assertTimePtrEqual(t, "LockedAt", got.LockedAt, want.LockedAt)
+	assertTimePtrEqual(t, "LeaseExpiresAt", got.LeaseExpiresAt, want.LeaseExpiresAt)
+	assertTimePtrEqual(t, "StartedAt", got.StartedAt, want.StartedAt)
+	assertTimePtrEqual(t, "CompletedAt", got.CompletedAt, want.CompletedAt)
+
+	// ClaimToken: adjust the deref to match its concrete type.
+	// If ClaimToken is *uuid.UUID:
+	if (got.ClaimToken == nil) != (want.ClaimToken == nil) {
+		t.Fatalf("job.ClaimToken nil-ness mismatch: got %v, want %v", got.ClaimToken, want.ClaimToken)
 	}
-	if got.ClaimToken != want.ClaimToken {
-		t.Fatalf("job.ClaimToken = %q, want %q", got.ClaimToken, want.ClaimToken)
+	if want.ClaimToken != nil && *got.ClaimToken != *want.ClaimToken {
+		t.Fatalf("job.ClaimToken = %v, want %v", *got.ClaimToken, *want.ClaimToken)
 	}
+
 	if !reflect.DeepEqual(got.Result, want.Result) {
 		t.Fatalf("job.Result = %s, want %s", got.Result, want.Result)
 	}
-	if !got.StartedAt.Equal(want.StartedAt) {
-		t.Fatalf("job.StartedAt = %v, want %v", got.StartedAt, want.StartedAt)
-	}
-	if !got.CompletedAt.Equal(want.CompletedAt) {
-		t.Fatalf("job.CompletedAt = %v, want %v", got.CompletedAt, want.CompletedAt)
-	}
-	if !got.ScheduledAt.Equal(want.ScheduledAt) {
+
+	if !got.ScheduledAt.Truncate(time.Microsecond).Equal(want.ScheduledAt.Truncate(time.Microsecond)) {
 		t.Fatalf("job.ScheduledAt = %v, want %v", got.ScheduledAt, want.ScheduledAt)
 	}
-	if !got.CreatedAt.Equal(want.CreatedAt) {
+	if !got.CreatedAt.Truncate(time.Microsecond).Equal(want.CreatedAt.Truncate(time.Microsecond)) {
 		t.Fatalf("job.CreatedAt = %v, want %v", got.CreatedAt, want.CreatedAt)
 	}
-	if !got.UpdatedAt.Equal(want.UpdatedAt) {
+	if !got.UpdatedAt.Truncate(time.Microsecond).Equal(want.UpdatedAt.Truncate(time.Microsecond)) {
 		t.Fatalf("job.UpdatedAt = %v, want %v", got.UpdatedAt, want.UpdatedAt)
+	}
+}
+
+func assertTimePtrEqual(t *testing.T, field string, got, want *time.Time) {
+	t.Helper()
+
+	if (got == nil) != (want == nil) {
+		t.Fatalf("job.%s nil-ness mismatch: got %v, want %v", field, got, want)
+	}
+	if want == nil {
+		return // both nil
+	}
+	if !got.Equal(*want) {
+		t.Fatalf("job.%s = %v, want %v", field, *got, *want)
 	}
 }
