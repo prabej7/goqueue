@@ -340,7 +340,8 @@ func (r *JobRepository) RenewLease(
 			lease_expires_at = $2
 		WHERE 
 			id = $1
-			AND claim_token = $3;
+			AND claim_token = $3
+			AND status = 'processing';
 	`
 
 	result, err := r.db.ExecContext(
