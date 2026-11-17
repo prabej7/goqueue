@@ -31,6 +31,12 @@ type JobRepository interface {
 		claimToken string,
 		err string,
 	) error
+	RenewLease(
+		ctx context.Context,
+		jobID uuid.UUID,
+		claimToken string,
+		leaseExpiration time.Time,
+) error
 }
 
 type Worker struct {
@@ -71,7 +77,7 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 		context.WithoutCancel(ctx),
 		2*time.Minute,
 	)
-	
+
 	defer cancel()
 
 	handler, found := w.registry.Get(nextJob.Type)
