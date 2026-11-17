@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/prabej7/goqueue/internal/job/model"
@@ -264,6 +265,15 @@ func (m *mockJobRepository) UpdateLastError(
 	ID uuid.UUID,
 	claimToken string,
 	err string,
+) error {
+	return nil
+}
+
+func (m *mockJobRepository) RenewLease(
+	ctx context.Context,
+	jobID uuid.UUID,
+	claimToken string,
+	leaseExpiration time.Time,
 ) error {
 	return nil
 }
