@@ -714,3 +714,63 @@ func TestUpdateLastError(t *testing.T) {
 		t.Errorf("expected %v, got %v", lastErrorString, *updatedJob.LastError)
 	}
 }
+
+func TestRenewLease(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	// Create one pending job.
+	job := &model.Job{
+		ID:          uuid.New(),
+		Type:        "test",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		Priority:    1,
+		Attempts:    0,
+		MaxAttempts: 3,
+		ScheduledAt: time.Now().Add(-time.Minute),
+	}
+
+	_, err := repo.Create(ctx, job)
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
+	}
+
+	workerId := uuid.New()
+	claimToken := uuid.New()
+	claimJobPayload := ClaimNextJobPayload{
+		WorkerID:        workerId,
+		LeaseExpiration: time.Now().Add(time.Minute * 5),
+		ClaimToken:      claimToken,
+	}
+
+	claimedJob, err := repo.ClaimNextJob(ctx, claimJobPayload)
+	if err != nil {
+		t.Errorf("error on ClaimJob(): %+v", err)
+	}
+
+	newLeaseExpiration := time.Now().
+		Add(time.Minute * 5).
+		Truncate(time.Microsecond)
+	if err := repo.RenewLease(
+		ctx,
+		claimedJob.ID,
+		claimToken.String(),
+		newLeaseExpiration,
+	); err != nil {
+		t.Fatalf("expected no error on RenewLease(), got:%+v", err)
+	}
+
+	updatedJob, err := repo.GetByID(ctx, claimedJob.ID)
+	if err != nil {
+		t.Fatalf("expected no error on GetByID(): %+v", err)
+	}
+
+	assertTimePtrEqual(
+		t,
+		"lease expiration",
+		updatedJob.LeaseExpiresAt,
+		&newLeaseExpiration,
+	)
+}
