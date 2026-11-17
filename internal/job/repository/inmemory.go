@@ -155,3 +155,27 @@ func (m *MockJobRepository) UpdateLastError(
 
 	return nil
 }
+
+func (m *MockJobRepository) RenewLease(
+	ctx context.Context,
+	jobID uuid.UUID,
+	claimToken string,
+	leaseExpiration time.Time,
+) error {
+	job, err := m.GetByID(ctx, jobID)
+	if err != nil {
+		return err
+	}
+
+	if job == nil {
+		return ErrJobNotFound
+	}
+
+	if *job.ClaimToken != claimToken {
+		return ErrJobClaimLost
+	}
+
+	job.LeaseExpiresAt = &leaseExpiration
+
+	return nil
+}
