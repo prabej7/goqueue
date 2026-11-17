@@ -125,7 +125,7 @@ func (m *MockJobRepository) updateClaimedJobStatus(
 		return err
 	}
 
-	if job.ClaimToken == &claimToken {
+	if job.ClaimToken != nil && *job.ClaimToken == claimToken {
 		job.Status = status
 	} else {
 		return ErrJobClaimLost
@@ -145,7 +145,9 @@ func (m *MockJobRepository) UpdateLastError(
 		return err
 	}
 
-	if job.ClaimToken != &claimToken {
+	if job.ClaimToken != nil && *job.ClaimToken == claimToken {
+		job.LastError = &lastError
+	} else {
 		return ErrJobClaimLost
 	}
 
