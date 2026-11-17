@@ -8,9 +8,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prabej7/goqueue/internal/config"
 	"github.com/prabej7/goqueue/internal/job/model"
 	"github.com/prabej7/goqueue/internal/job/repository"
 )
+
+func loadConfig(t *testing.T) *config.Config {
+	t.Helper()
+
+	cfg, err := config.Load()
+	if err != nil {
+		// t.Fatalf("error loading config: %+v", err)
+	}
+
+	return cfg
+}
 
 func TestProcessNextJob_Success(t *testing.T) {
 	job := &model.Job{
@@ -30,10 +42,13 @@ func TestProcessNextJob_Success(t *testing.T) {
 		return nil
 	})
 
+	cfg := loadConfig(t)
+
 	w := NewWorker(
 		uuid.New(),
 		repo,
 		&registry,
+		cfg,
 	)
 
 	ctx := t.Context()
@@ -70,6 +85,7 @@ func TestProcessNextJob_HandlerFailure(t *testing.T) {
 	}
 
 	registry := Registry{}
+	cfg := loadConfig(t)
 
 	handlerMockErr := errors.New("something went wrong")
 	registry.Register(
@@ -85,6 +101,7 @@ func TestProcessNextJob_HandlerFailure(t *testing.T) {
 		uuid.New(),
 		repo,
 		&registry,
+		cfg,
 	)
 
 	ctx := t.Context()
@@ -128,11 +145,13 @@ func TestProcessNextJob_NoHandler(t *testing.T) {
 	}
 
 	registry := Registry{}
+	cfg := loadConfig(t)
 
 	w := NewWorker(
 		uuid.New(),
 		repo,
 		&registry,
+		cfg,
 	)
 
 	ctx := t.Context()
@@ -207,7 +226,8 @@ func TestProcessNextJob_ClaimLost(t *testing.T) {
 		return nil
 	})
 
-	w := NewWorker(uuid.New(), repo, &registry)
+	cfg := loadConfig(t)
+	w := NewWorker(uuid.New(), repo, &registry, cfg)
 
 	err := w.processNextJob(t.Context())
 
@@ -285,8 +305,9 @@ func TestProcessNextJob_ClaimError(t *testing.T) {
 	}
 
 	registry := Registry{}
+	cfg := loadConfig(t)
 
-	w := NewWorker(uuid.New(), repo, &registry)
+	w := NewWorker(uuid.New(), repo, &registry, cfg)
 
 	err := w.processNextJob(t.Context())
 
@@ -299,8 +320,9 @@ func TestProcessNextJob_NoJobsAvailable(t *testing.T) {
 	repo := &repository.MockJobRepository{}
 
 	registry := Registry{}
+	cfg := loadConfig(t)
 
-	w := NewWorker(uuid.New(), repo, &registry)
+	w := NewWorker(uuid.New(), repo, &registry, cfg)
 
 	err := w.processNextJob(t.Context())
 
@@ -309,5 +331,47 @@ func TestProcessNextJob_NoJobsAvailable(t *testing.T) {
 			"expected ErrNoJobsAvailable, got: %v",
 			err,
 		)
+	}
+}
+
+func TestProcessNextJob_Heartbeat(t *testing.T) {
+	job := &model.Job{
+		ID:      uuid.New(),
+		Type:    "email.send",
+		Payload: json.RawMessage(`{"message":"hello"}`),
+		Status:  model.JobStatusPending,
+	}
+	repo := &repository.MockJobRepository{
+		Jobs: []*model.Job{job},
+	}
+
+	registry := Registry{}
+
+	cfg := loadConfig(t)
+	cfg.HeartbeatInterval = 20 * time.Millisecond
+	cfg.LeaseDuration = time.Minute
+	cfg.JobTimeout = time.Second
+
+	registry.Register(
+		"email.send",
+		func(ctx context.Context, payload json.RawMessage) error {
+			select {
+			case <-time.After(100 * time.Millisecond):
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	)
+
+	w := NewWorker(uuid.New(), repo, &registry, cfg)
+
+	err := w.processNextJob(t.Context())
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if repo.RenewLeaseCalls == 0 {
+		t.Fatal("expected heartbeat to renew the lease at least once")
 	}
 }
