@@ -189,7 +189,8 @@ func (r *JobRepository) ClaimNextJob(
 				locked_by = $2,
 				locked_at = NOW(),
 				lease_expires_at = $3,
-				claim_token = $4
+				claim_token = $4,
+				attempts = attempts + 1
 			WHERE id = $1
 			RETURNING status, locked_by, locked_at, lease_expires_at, claim_token;
 		`
@@ -252,11 +253,15 @@ func (r *JobRepository) updateClaimedJobStatus(
 		UPDATE jobs
 		SET 
 			status = $2,
-			updated_at = NOW()
+			updated_at = NOW(),
+			locked_by = NULL,
+			locked_at = NULL,
+			lease_expires_at = NULL,
+			claim_token = NULL
 		WHERE 
 			id = $1
 			AND status = 'processing'
-			AND claim_token = $3
+			AND claim_token = $3;
 	`
 
 	res, err := r.db.ExecContext(
