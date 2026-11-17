@@ -103,7 +103,15 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 		return nil
 	}
 
-	return w.repo.CompleteJob(ctx, nextJob.ID, claimToken.String())
+	if err := w.repo.CompleteJob(
+		ctx,
+		nextJob.ID,
+		claimToken.String(),
+	); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (w *Worker) Start(ctx context.Context) error {
