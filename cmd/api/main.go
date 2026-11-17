@@ -69,6 +69,7 @@ func main() {
 		uuid.New(),
 		repository.NewJobRepository(db),
 		registry,
+		cfg,
 	)
 
 	// Start HTTP server
