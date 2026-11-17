@@ -9,8 +9,9 @@ import (
 )
 
 type MockJobRepository struct {
-	Jobs      []*model.Job
-	CreateErr error
+	Jobs            []*model.Job
+	CreateErr       error
+	RenewLeaseCalls int
 }
 
 var _ Repository = (*MockJobRepository)(nil)
@@ -162,6 +163,7 @@ func (m *MockJobRepository) RenewLease(
 	claimToken string,
 	leaseExpiration time.Time,
 ) error {
+	m.RenewLeaseCalls++
 	job, err := m.GetByID(ctx, jobID)
 	if err != nil {
 		return err
@@ -172,6 +174,10 @@ func (m *MockJobRepository) RenewLease(
 	}
 
 	if *job.ClaimToken != claimToken {
+		return ErrJobClaimLost
+	}
+
+	if job.Status != model.JobStatusProcessing {
 		return ErrJobClaimLost
 	}
 
