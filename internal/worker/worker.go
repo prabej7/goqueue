@@ -66,7 +66,10 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 	if nextJob == nil {
 		return errors.New("repository returned nil job without error")
 	}
-
+	jobCtx, cancel := context.WithCancel(
+		context.WithoutCancel(ctx),
+	)
+	defer cancel()
 	handler, found := w.registry.Get(nextJob.Type)
 	if !found {
 		if err := w.repo.UpdateLastError(
@@ -85,7 +88,7 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 		return nil
 	}
 
-	err = handler(ctx, nextJob.Payload)
+	err = handler(jobCtx, nextJob.Payload)
 	if err != nil {
 		if err := w.repo.UpdateLastError(
 			ctx,
