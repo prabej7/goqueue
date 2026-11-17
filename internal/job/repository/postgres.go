@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/prabej7/goqueue/internal/job/model"
@@ -309,6 +310,45 @@ func (r *JobRepository) UpdateLastError(
 		ID,
 		claimToken,
 		lastErr,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		return ErrJobClaimLost
+	}
+
+	return nil
+}
+
+func (r *JobRepository) RenewLease(
+	ctx context.Context,
+	jobID uuid.UUID,
+	claimToken string,
+	leaseExpiration time.Time,
+) error {
+	query := `
+		UPDATE jobs
+		SET 
+			lease_expires_at = $2
+		WHERE 
+			id = $1
+			AND claim_token = $3;
+	`
+
+	result, err := r.db.ExecContext(
+		ctx,
+		query,
+		jobID,
+		leaseExpiration,
+		claimToken,
 	)
 
 	if err != nil {
