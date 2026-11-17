@@ -24,6 +24,12 @@ type Repository interface {
 		ctx context.Context,
 		ID uuid.UUID,
 		claimToken string,
-		err string,
+		lastErr string,
+	) error
+	RenewLease(
+		ctx context.Context,
+		jobID uuid.UUID,
+		claimToken string,
+		leaseExpiration time.Time,
 	) error
 }
