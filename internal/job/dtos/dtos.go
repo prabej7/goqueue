@@ -15,3 +15,8 @@ type QueueJobPayload struct {
 type GetJobParams struct {
 	ID uuid.UUID `json:"id"`
 }
+
+type GetAllQuery struct {
+    Page  int `schema:"page" validate:"min=1"`
+    Limit int `schema:"limit" validate:"min=1,max=100"`
+}
