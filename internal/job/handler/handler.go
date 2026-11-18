@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/prabej7/goqueue/internal/job/dtos"
@@ -12,7 +13,7 @@ import (
 )
 
 type Handler struct {
-	service *service.Service
+	service JobService
 }
 
 func NewHandler(service *service.Service) *Handler {
@@ -62,4 +63,32 @@ func (h *Handler) GetJobByID(w http.ResponseWriter, r *http.Request) {
 		Message: "job retrived successfully",
 		Data:    job,
 	})
+}
+
+func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
+	query := middleware.GetQuery[dtos.GetAllQuery](r)
+	jobs, err := h.service.GetAll(
+		r.Context(),
+		repository.PaginationParams{
+			Page:  query.Page,
+			Limit: query.Limit,
+		},
+	)
+
+	if err != nil {
+		if errors.Is(err, repository.ErrJobNotFound) {
+			apperrors.NotFoundError(w, "jobs not found")
+			return
+		}
+		apperrors.InternalServerError(w, err)
+		return
+	}
+
+	if err := response.SendResponse(w, http.StatusOK, &response.Response{
+		Message: "jobs retrieved successfully!",
+		Data:    jobs,
+	}); err != nil {
+		apperrors.InternalServerError(w, err)
+		return
+	}
 }
