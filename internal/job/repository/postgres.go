@@ -235,13 +235,83 @@ func (r *JobRepository) CompleteJob(
 func (r *JobRepository) FailJob(ctx context.Context,
 	ID uuid.UUID,
 	claimToken string,
-) error {
-	return r.updateClaimedJobStatus(
+	failErr error,
+	retryAt time.Time,
+) (*model.Job, error) {
+	query := `
+				UPDATE jobs
+				SET
+					status = CASE
+						WHEN attempts >= max_attempts THEN 'dead'
+						ELSE 'pending'
+					END,
+					last_error = $3,
+					scheduled_at = CASE
+						WHEN attempts >= max_attempts THEN scheduled_at
+						ELSE $4
+					END
+				WHERE
+					id = $1
+					AND claim_token = $2
+					AND status = 'processing'
+				RETURNING 
+					id,
+					job_type,
+					payload,
+					status,
+					priority,
+					attempts,
+					max_attempts,
+					scheduled_at,
+					locked_by,
+					locked_at, 
+					lease_expires_at,
+					claim_token,
+					result,
+					last_error,
+					started_at,
+					completed_at,
+					created_at,
+					updated_at;
+			`
+	job := model.Job{}
+	err := r.db.QueryRowContext(
 		ctx,
+		query,
 		ID,
-		model.JobStatusFailed,
 		claimToken,
+		failErr.Error(),
+		retryAt,
+	).Scan(
+		&job.ID,
+		&job.Type,
+		&job.Payload,
+		&job.Status,
+		&job.Priority,
+		&job.Attempts,
+		&job.MaxAttempts,
+		&job.ScheduledAt,
+		&job.LockedBy,
+		&job.LockedAt,
+		&job.LeaseExpiresAt,
+		&job.ClaimToken,
+		&job.Result,
+		&job.LastError,
+		&job.StartedAt,
+		&job.CompletedAt,
+		&job.CreatedAt,
+		&job.UpdatedAt,
 	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrJobClaimLost
+		}
+		return nil, err
+	}
+
+	return &job, nil
+
 }
 
 func (r *JobRepository) updateClaimedJobStatus(
