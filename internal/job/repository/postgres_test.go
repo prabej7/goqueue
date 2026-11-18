@@ -551,18 +551,73 @@ func TestJobRepository_FailJob(t *testing.T) {
 		t.Errorf("error on ClaimJob(): %+v", err)
 	}
 
-	if err := repo.FailJob(ctx, job.ID, *claimedJob.ClaimToken); err != nil {
+	updatedJob, err := repo.FailJob(
+		ctx,
+		job.ID,
+		*claimedJob.ClaimToken,
+		errors.New("job failed"),
+		time.Now().Add(time.Second*5),
+	)
+	if err != nil {
 		t.Errorf("error on CompleteJob(): %+v", err)
 	}
 
-	createdJob, err := repo.GetByID(ctx, job.ID)
-	if err != nil {
-		t.Fatalf("failed to GetByID job: %v", err)
+	if updatedJob.Status != model.JobStatusPending {
+		t.Errorf("expected 'pending', got: %s", updatedJob.Status)
+	}
+}
+
+func TestJobRepository_FailJob_Dead(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	// Create one pending job.
+	job := &model.Job{
+		ID:          uuid.New(),
+		Type:        "test",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		Priority:    1,
+		Attempts:    0,
+		MaxAttempts: 1,
+		ScheduledAt: time.Now().Add(-time.Minute),
 	}
 
-	if createdJob.Status != model.JobStatusFailed {
-		t.Errorf("expected 'completed', got: %s", createdJob.Status)
+	_, err := repo.Create(ctx, job)
+	if err != nil {
+		t.Fatalf("failed to create job: %v", err)
 	}
+
+	//claimJob
+	workerId := uuid.New()
+	claimToken := uuid.New()
+	claimJobPayload := ClaimNextJobPayload{
+		WorkerID:        workerId,
+		LeaseExpiration: time.Now().Add(time.Minute * 5),
+		ClaimToken:      claimToken,
+	}
+
+	claimedJob, err := repo.ClaimNextJob(ctx, claimJobPayload)
+	if err != nil {
+		t.Errorf("error on ClaimJob(): %+v", err)
+	}
+
+	updatedJob, err := repo.FailJob(
+		ctx,
+		job.ID,
+		*claimedJob.ClaimToken,
+		errors.New("job failed"),
+		time.Now().Add(time.Second*5),
+	)
+	if err != nil {
+		t.Errorf("error on CompleteJob(): %+v", err)
+	}
+
+	if updatedJob.Status != model.JobStatusDead {
+		t.Errorf("expected 'dead', got: %s", updatedJob.Status)
+	}
+
 }
 
 func assertJobsEqual(t *testing.T, got, want *model.Job) {
