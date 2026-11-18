@@ -22,7 +22,9 @@ type JobRepository interface {
 		ctx context.Context,
 		ID uuid.UUID,
 		claimToken string,
-	) error
+		failErr error,
+		retryAt time.Time,
+	) (*model.Job, error)
 	ClaimNextJob(
 		ctx context.Context,
 		payload repository.ClaimNextJobPayload,
@@ -83,6 +85,10 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 	}
 
 	jobCtx, cancel := context.WithTimeout(
+		/*
+			Cancellation of application context shouldn't cancel
+			thhe processing worker job
+		*/
 		context.WithoutCancel(ctx),
 		w.cfg.JobTimeout,
 	)
@@ -93,19 +99,22 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 
 	handler, found := w.registry.Get(nextJob.Type)
 	if !found {
-		if err := w.repo.UpdateLastError(
+		backoff := computeBackoff(
+			nextJob.Attempts,
+			time.Minute*5,
+			time.Second*5,
+		)
+		_, err := w.repo.FailJob(
 			ctx,
 			nextJob.ID,
 			claimToken.String(),
-			ErrNoHandlerFound.Error(),
-		); err != nil {
+			ErrNoHandlerFound,
+			time.Now().Add(backoff),
+		)
+
+		if err != nil {
 			return err
 		}
-
-		if err := w.repo.FailJob(ctx, nextJob.ID, claimToken.String()); err != nil {
-			return err
-		}
-
 		return nil
 	}
 
@@ -124,7 +133,6 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 	}()
 
 	err = handler(handlerCtx, nextJob.Payload)
-
 	stopHeatbeat()
 
 	hbErr := <-heartbeatErr
@@ -134,16 +142,18 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 	}
 
 	if err != nil {
-		if err := w.repo.UpdateLastError(
+		backoff := computeBackoff(
+			nextJob.Attempts,
+			time.Minute*5,
+			time.Second*5,
+		)
+		if _, err := w.repo.FailJob(
 			ctx,
 			nextJob.ID,
 			claimToken.String(),
-			err.Error(),
+			err,
+			time.Now().Add(backoff),
 		); err != nil {
-			return err
-		}
-
-		if err := w.repo.FailJob(ctx, nextJob.ID, claimToken.String()); err != nil {
 			return err
 		}
 
@@ -225,4 +235,30 @@ func (w *Worker) heartbeat(
 
 		}
 	}
+}
+
+func computeBackoff(
+	attempts int,
+	baseDelay time.Duration,
+	maxDelay time.Duration,
+) time.Duration {
+	if attempts <= 0 || baseDelay <= 0 {
+		return 0
+	}
+
+	delay := baseDelay
+
+	for i := 1; i < attempts; i++ {
+		if delay >= maxDelay/2 {
+			return maxDelay
+		}
+
+		delay *= 2
+	}
+
+	if delay > maxDelay {
+		return maxDelay
+	}
+
+	return delay
 }
