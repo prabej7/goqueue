@@ -32,6 +32,10 @@ func New(deps Dependencies) http.Handler {
 			r.Post("/", middleware.ValidatePayload[jobDtos.QueueJobPayload](jobHandler.QueueJob))
 
 			r.Get("/{id}", jobHandler.GetJobByID)
+
+			r.Get("/",
+				middleware.ValidateQuery[jobDtos.GetAllQuery](jobHandler.GetAll),
+			)
 		})
 	})
 
