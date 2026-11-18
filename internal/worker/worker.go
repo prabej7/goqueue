@@ -101,8 +101,8 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 	if !found {
 		backoff := computeBackoff(
 			nextJob.Attempts,
-			time.Minute*5,
 			time.Second*5,
+			time.Minute*5,
 		)
 		_, err := w.repo.FailJob(
 			ctx,
@@ -144,8 +144,8 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 	if err != nil {
 		backoff := computeBackoff(
 			nextJob.Attempts,
-			time.Minute*5,
 			time.Second*5,
+			time.Minute*5,
 		)
 		if _, err := w.repo.FailJob(
 			ctx,
