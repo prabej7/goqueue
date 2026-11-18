@@ -204,3 +204,10 @@ func (m *MockJobRepository) RenewLease(
 
 	return nil
 }
+
+func (m *MockJobRepository) GetAll(
+	ctx context.Context,
+	pagination PaginationParams,
+) ([]*model.Job, error) {
+	return m.Jobs, nil
+}
