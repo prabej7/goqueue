@@ -829,3 +829,43 @@ func TestRenewLease(t *testing.T) {
 		&newLeaseExpiration,
 	)
 }
+
+func TestGetAll(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	for i := range 5 {
+		job := &model.Job{
+			ID:          uuid.New(),
+			Type:        "test",
+			Payload:     json.RawMessage(fmt.Sprintf(`{"message":"job-%d"}`, i)),
+			Status:      model.JobStatusPending,
+			Priority:    1,
+			Attempts:    0,
+			MaxAttempts: 3,
+			ScheduledAt: time.Now(),
+		}
+
+		if _, err := repo.Create(ctx, job); err != nil {
+			t.Fatalf("failed to create job %d: %v", i, err)
+		}
+	}
+
+	pagination := PaginationParams{
+		Page:  1,
+		Limit: 2,
+	}
+	jobs, err := repo.GetAll(
+		ctx,
+		pagination,
+	)
+
+	if err != nil {
+		t.Fatalf("expected jobs, got %+v", err)
+	}
+
+	if len(jobs) != 2 {
+		t.Fatalf("expected len(jobs) = %d, got:%d", pagination.Limit, len(jobs))
+	}
+}
