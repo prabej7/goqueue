@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -16,7 +17,8 @@ import (
 type contextKey string
 
 const (
-	BodyKey contextKey = "Body"
+	BodyKey  contextKey = "Body"
+	QueryKey contextKey = "Query"
 )
 
 func ValidatePayload[T any](next http.HandlerFunc) http.HandlerFunc {
@@ -87,7 +89,7 @@ func GetParams[T any](r *http.Request) T {
 	decoder := schema.NewDecoder()
 	routeParams := chi.RouteContext(r.Context()).URLParams
 	values := make(map[string][]string, len(routeParams.Keys))
-	
+
 	for i, key := range routeParams.Keys {
 		values[key] = []string{routeParams.Values[i]}
 	}
@@ -97,4 +99,38 @@ func GetParams[T any](r *http.Request) T {
 	}
 
 	return params
+}
+
+func ValidateQuery[T any](next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var query T
+
+		if err := schema.NewDecoder().Decode(&query, r.URL.Query()); err != nil {
+			log.Println("error here")
+			apperrors.ValidationError(w, "invalid query", nil)
+			return
+		}
+
+		if err := validator.New().Struct(&query); err != nil {
+			validationErrors, ok := err.(validator.ValidationErrors)
+			if !ok {
+				apperrors.ValidationError(w, "invalid query", nil)
+				return
+			}
+
+			apperrors.ValidationError(
+				w,
+				"invalid query",
+				buildValidationErrorMessage(validationErrors),
+			)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), QueryKey, &query)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+func GetQuery[T any](r *http.Request) T {
+    return *r.Context().Value(QueryKey).(*T)
 }
