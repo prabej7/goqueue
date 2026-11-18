@@ -116,12 +116,8 @@ func TestProcessNextJob_HandlerFailure(t *testing.T) {
 		t.Errorf("error on GetByID(): %+v", err)
 	}
 
-	if processedJob.Status == model.JobStatusCompleted {
-		t.Fatal("expected job not to be completed")
-	}
-
-	if processedJob.Status != model.JobStatusFailed {
-		t.Fatal("expected job to be failed")
+	if processedJob.Status != model.JobStatusDead {
+		t.Errorf("expected status %v, got %v", model.JobStatusDead, processedJob.Status)
 	}
 
 	if processedJob.LastError == nil {
@@ -134,10 +130,11 @@ func TestProcessNextJob_HandlerFailure(t *testing.T) {
 
 func TestProcessNextJob_NoHandler(t *testing.T) {
 	job := &model.Job{
-		ID:      uuid.New(),
-		Type:    "email.send",
-		Payload: json.RawMessage(`{"message":"hello"}`),
-		Status:  model.JobStatusPending,
+		ID:          uuid.New(),
+		Type:        "email.send",
+		Payload:     json.RawMessage(`{"message":"hello"}`),
+		Status:      model.JobStatusPending,
+		MaxAttempts: 3,
 	}
 
 	repo := &repository.MockJobRepository{
@@ -166,12 +163,8 @@ func TestProcessNextJob_NoHandler(t *testing.T) {
 		t.Errorf("error on GetByID(): %+v", err)
 	}
 
-	if processedJob.Status == model.JobStatusCompleted {
-		t.Fatal("expected job not to be completed")
-	}
-
 	if processedJob.Status != model.JobStatusFailed {
-		t.Fatal("expected job to be failed")
+		t.Fatalf("expected job to be failed, got %v", processedJob.Status)
 	}
 
 	if processedJob.LastError == nil {
@@ -276,8 +269,10 @@ func (m *mockJobRepository) FailJob(
 	ctx context.Context,
 	ID uuid.UUID,
 	claimToken string,
-) error {
-	return nil
+	failErr error,
+	retryAt time.Time,
+) (*model.Job, error) {
+	return nil, nil
 }
 
 func (m *mockJobRepository) UpdateLastError(
