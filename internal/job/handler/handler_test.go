@@ -118,3 +118,25 @@ func TestGetJob(t *testing.T) {
 
 	tests.AssertHttpResponse(t, rec, http.StatusOK)
 }
+
+func TestGetAll(t *testing.T) {
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		"/api/v1/jobs?page=1&limit=1",
+		nil,
+	)
+
+	if err != nil {
+		t.Errorf("error on NewRequest(): %+v", err)
+	}
+
+	rec := httptest.NewRecorder()
+
+	jobHandler := newHandler()
+	handler := middleware.ValidateQuery[dtos.GetAllQuery](jobHandler.GetAll)
+
+	handler.ServeHTTP(rec, req)
+
+	tests.AssertHttpResponse(t, rec, http.StatusOK)
+}
