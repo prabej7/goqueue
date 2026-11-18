@@ -106,13 +106,32 @@ func (m *MockJobRepository) FailJob(
 	ctx context.Context,
 	ID uuid.UUID,
 	claimToken string,
-) error {
-	return m.updateClaimedJobStatus(
+	failErr error,
+	retryAt time.Time,
+) (*model.Job, error) {
+	job, err := m.GetByID(
 		ctx,
 		ID,
-		model.JobStatusFailed,
-		claimToken,
 	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if *job.ClaimToken != claimToken {
+		return nil, ErrJobClaimLost
+	}
+
+	errString := failErr.Error()
+	job.LastError = &errString
+
+	if job.Attempts == job.MaxAttempts {
+		job.Status = model.JobStatusDead
+	} else {
+		job.Status = model.JobStatusFailed
+	}
+
+	return job, nil
 }
 
 func (m *MockJobRepository) updateClaimedJobStatus(
