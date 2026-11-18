@@ -14,6 +14,11 @@ type ClaimNextJobPayload struct {
 	ClaimToken      uuid.UUID
 }
 
+type PaginationParams struct {
+	Page  int
+	Limit int
+}
+
 type Repository interface {
 	Create(
 		ctx context.Context,
@@ -50,4 +55,8 @@ type Repository interface {
 		claimToken string,
 		leaseExpiration time.Time,
 	) error
+	GetAll(
+		ctx context.Context,
+		pagination PaginationParams,
+	) ([]*model.Job, error)
 }
