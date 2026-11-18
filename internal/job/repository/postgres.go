@@ -249,7 +249,12 @@ func (r *JobRepository) FailJob(ctx context.Context,
 					scheduled_at = CASE
 						WHEN attempts >= max_attempts THEN scheduled_at
 						ELSE $4
-					END
+						END,
+								updated_at = NOW(),
+					locked_by = NULL,
+					locked_at = NULL,
+					lease_expires_at = NULL,
+					claim_token = NULL
 				WHERE
 					id = $1
 					AND claim_token = $2
