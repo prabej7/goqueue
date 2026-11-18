@@ -61,3 +61,10 @@ func (s *Service) ClaimJob(ctx context.Context) (*model.Job, error) {
 	}
 	return s.repo.ClaimNextJob(ctx, claimJobPayload)
 }
+
+func (s *Service) GetAll(
+	ctx context.Context,
+	pagination repository.PaginationParams,
+) ([]*model.Job, error) {
+	return s.repo.GetAll(ctx, pagination)
+}
