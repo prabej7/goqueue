@@ -858,6 +858,7 @@ func TestGetAll(t *testing.T) {
 	}
 	jobs, err := repo.GetAll(
 		ctx,
+		GetAllFilters{},
 		pagination,
 	)
 
@@ -869,3 +870,140 @@ func TestGetAll(t *testing.T) {
 		t.Fatalf("expected len(jobs) = %d, got:%d", pagination.Limit, len(jobs))
 	}
 }
+
+func TestGetAll_NoJobsFound(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	jobs, err := repo.GetAll(
+		ctx,
+		GetAllFilters{
+			JobType: nil,
+			Status:  nil,
+		},
+		PaginationParams{
+			Page:  1,
+			Limit: 10,
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %+v", err)
+	}
+
+	if len(jobs) != 0 {
+		t.Fatalf("expected len(jobs) = %d, got:%d", 0, len(jobs))
+	}
+}
+
+func TestGetAll_FilterByJobType(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	// Create a job with a specific job type.
+	jobsToCreate := []model.Job{
+		{
+			ID:          uuid.New(),
+			Type:        "typeA",
+			Payload:     json.RawMessage(`{"message":"job-typeA"}`),
+			Status:      model.JobStatusPending,
+			Priority:    1,
+			Attempts:    0,
+			MaxAttempts: 3,
+			ScheduledAt: time.Now(),
+		},
+		{
+			ID:          uuid.New(),
+			Type:        "typeB",
+			Payload:     json.RawMessage(`{"message":"job-typeB"}`),
+			Status:      model.JobStatusPending,
+			Priority:    1,
+			Attempts:    0,
+			MaxAttempts: 3,
+			ScheduledAt: time.Now(),
+		},
+	}
+
+	for i := range jobsToCreate {
+		if _, err := repo.Create(ctx, &jobsToCreate[i]); err != nil {
+			t.Fatalf("failed to create job %d: %v", i, err)
+		}
+	}
+
+	jobType := "typeA"
+	j, err := repo.GetAll(
+		ctx,
+		GetAllFilters{JobType: &jobType},
+		PaginationParams{Page: 1, Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %+v", err)
+	}
+
+	if len(j) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(j))
+	}
+	if j[0].ID != jobsToCreate[0].ID {
+		t.Fatalf("expected job %v, got %v", jobsToCreate[0].ID, j[0].ID)
+	}
+	if j[0].Type != jobType {
+		t.Fatalf("expected job type %q, got %q", jobType, j[0].Type)
+	}
+}
+
+func TestGetAll_FilterByStatus(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewJobRepository(db)
+	ctx := context.Background()
+
+	jobsToCreate := []model.Job{
+		{
+			ID:          uuid.New(),
+			Type:        "typeA",
+			Payload:     json.RawMessage(`{"message":"job-pending"}`),
+			Status:      model.JobStatusPending,
+			Priority:    1,
+			Attempts:    0,
+			MaxAttempts: 3,
+			ScheduledAt: time.Now(),
+		},
+		{
+			ID:          uuid.New(),
+			Type:        "typeA",
+			Payload:     json.RawMessage(`{"message":"job-completed"}`),
+			Status:      model.JobStatusCompleted,
+			Priority:    1,
+			Attempts:    0,
+			MaxAttempts: 3,
+			ScheduledAt: time.Now(),
+		},
+	}
+
+	for i := range jobsToCreate {
+		if _, err := repo.Create(ctx, &jobsToCreate[i]); err != nil {
+			t.Fatalf("failed to create job %d: %v", i, err)
+		}
+	}
+
+	status := model.JobStatusCompleted
+	jobs, err := repo.GetAll(
+		ctx,
+		GetAllFilters{Status: &status},
+		PaginationParams{Page: 1, Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %+v", err)
+	}
+
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+	if jobs[0].ID != jobsToCreate[1].ID {
+		t.Fatalf("expected job %v, got %v", jobsToCreate[1].ID, jobs[0].ID)
+	}
+	if jobs[0].Status != status {
+		t.Fatalf("expected job status %q, got %q", status, jobs[0].Status)
+	}
+}
+
