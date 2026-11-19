@@ -19,6 +19,11 @@ type PaginationParams struct {
 	Limit int
 }
 
+type GetAllFilters struct {
+	Status  *model.JobStatus
+	JobType *string
+}
+
 type Repository interface {
 	Create(
 		ctx context.Context,
@@ -57,6 +62,7 @@ type Repository interface {
 	) error
 	GetAll(
 		ctx context.Context,
+		filters GetAllFilters,
 		pagination PaginationParams,
 	) ([]*model.Job, error)
 }
