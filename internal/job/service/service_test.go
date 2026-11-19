@@ -256,3 +256,117 @@ func TestService_ClaimJob(t *testing.T) {
 
 	assertJobsEqual(t, claimedJob, createdJob)
 }
+
+func TestGetAllJobs(t *testing.T) {
+	ctx, jobService := newTestService(t)
+
+	jobPayload1 := &service.CreateJobInput{
+		JobType:  "test1",
+		Payload:  json.RawMessage(`{"message":"Hello1"}`),
+		Priority: 1,
+	}
+
+	jobPayload2 := &service.CreateJobInput{
+		JobType:  "test2",
+		Payload:  json.RawMessage(`{"message":"Hello2"}`),
+		Priority: 2,
+	}
+
+	_, err := jobService.CreateJob(ctx, jobPayload1)
+	if err != nil {
+		t.Fatalf("error on CreateJob(): %+v", err)
+	}
+
+	_, err = jobService.CreateJob(ctx, jobPayload2)
+	if err != nil {
+		t.Fatalf("error on CreateJob(): %+v", err)
+	}
+
+	jobs, err := jobService.GetAll(ctx, repository.GetAllFilters{}, repository.PaginationParams{Page: 1, Limit: 10})
+	if err != nil {
+		t.Fatalf("error on GetAll(): %+v", err)
+	}
+
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+
+}
+
+func TestGetAllJobs_NotFound(t *testing.T) {
+	ctx, jobService := newTestService(t)
+
+	jobType := "nonexistent"
+	jobs, err := jobService.GetAll(
+		ctx,
+		repository.GetAllFilters{JobType: &jobType},
+		repository.PaginationParams{Page: 1, Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("error on GetAll(): %+v", err)
+	}
+
+	if len(jobs) != 0 {
+		t.Fatalf("expected 0 jobs, got %d", len(jobs))
+	}
+}
+
+func TestGetAllJobs_JobTypeFilter(t *testing.T) {
+	ctx, jobService := newTestService(t)
+
+	jobPayload1 := &service.CreateJobInput{
+		JobType:  "test1",
+		Payload:  json.RawMessage(`{"message":"Hello1"}`),
+		Priority: 1,
+	}
+
+	_, err := jobService.CreateJob(ctx, jobPayload1)
+	if err != nil {
+		t.Fatalf("error on CreateJob(): %+v", err)
+	}
+
+	jobType := "test1"
+	jobs, err := jobService.GetAll(
+		ctx,
+		repository.GetAllFilters{JobType: &jobType},
+		repository.PaginationParams{Page: 1, Limit: 10},
+	)
+	if err != nil {
+		t.Fatalf("error on GetAll(): %+v", err)
+	}
+
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+}
+
+func TestGetAllJobs_StatusFilter(t *testing.T) {
+	ctx, jobService := newTestService(t)
+
+	jobPayload1 := &service.CreateJobInput{
+		JobType:  "test1",
+		Payload:  json.RawMessage(`{"message":"Hello1"}`),
+		Priority: 1,
+	}
+
+	_, err := jobService.CreateJob(ctx, jobPayload1)
+	if err != nil {
+		t.Fatalf("error on CreateJob(): %+v", err)
+	}
+
+	status := model.JobStatusPending
+	jobs, err := jobService.GetAll(
+		ctx,
+		repository.GetAllFilters{Status: &status},
+		repository.PaginationParams{Page: 1, Limit: 10},
+	)
+
+	if err != nil {
+		t.Fatalf("error on GetAll(): %+v", err)
+	}
+
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+}
