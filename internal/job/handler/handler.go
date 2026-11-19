@@ -69,6 +69,10 @@ func (h *Handler) GetAll(w http.ResponseWriter, r *http.Request) {
 	query := middleware.GetQuery[dtos.GetAllQuery](r)
 	jobs, err := h.service.GetAll(
 		r.Context(),
+		repository.GetAllFilters{
+			JobType: query.JobType,
+			Status:  query.Status,
+		},
 		repository.PaginationParams{
 			Page:  query.Page,
 			Limit: query.Limit,
