@@ -207,7 +207,22 @@ func (m *MockJobRepository) RenewLease(
 
 func (m *MockJobRepository) GetAll(
 	ctx context.Context,
+	filters GetAllFilters,
 	pagination PaginationParams,
 ) ([]*model.Job, error) {
-	return m.Jobs, nil
+	var jobs []*model.Job
+
+	for _, job := range m.Jobs {
+		if filters.Status != nil && job.Status != *filters.Status {
+			continue
+		}
+
+		if filters.JobType != nil && job.Type != *filters.JobType {
+			continue
+		}
+
+		jobs = append(jobs, job)
+	}
+
+	return jobs, nil
 }
