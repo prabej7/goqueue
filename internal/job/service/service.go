@@ -64,7 +64,8 @@ func (s *Service) ClaimJob(ctx context.Context) (*model.Job, error) {
 
 func (s *Service) GetAll(
 	ctx context.Context,
+	filters repository.GetAllFilters,
 	pagination repository.PaginationParams,
 ) ([]*model.Job, error) {
-	return s.repo.GetAll(ctx, pagination)
+	return s.repo.GetAll(ctx, filters, pagination)
 }
