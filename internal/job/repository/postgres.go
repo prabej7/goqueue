@@ -443,77 +443,89 @@ func (r *JobRepository) RenewLease(
 	return nil
 }
 
-func (r *JobRepository) GetAll(
-	ctx context.Context,
-	pagination PaginationParams,
-) ([]*model.Job, error) {
-	query := `
-		SELECT
-			id,
-			job_type,
-			payload,
-			status,
-			priority,
-			attempts,
-			max_attempts,
-			scheduled_at,
-			locked_by,
-			locked_at,
-			lease_expires_at,
-			claim_token,
-			result,
-			last_error,
-			started_at,
-			completed_at,
-			created_at,
-			updated_at
-		FROM jobs
-		ORDER BY created_at ASC
-		LIMIT $1
-		OFFSET $2
-	`
+	func (r *JobRepository) GetAll(
+		ctx context.Context,
+		filters GetAllFilters,
+		pagination PaginationParams,
+	) ([]*model.Job, error) {
+		query := `
+			SELECT
+				id,
+				job_type,
+				payload,
+				status,
+				priority,
+				attempts,
+				max_attempts,
+				scheduled_at,
+				locked_by,
+				locked_at,
+				lease_expires_at,
+				claim_token,
+				result,
+				last_error,
+				started_at,
+				completed_at,
+				created_at,
+				updated_at
+			FROM jobs
+			WHERE
+				($3::text IS NULL OR status = $3)
+				AND ($4::text IS NULL OR job_type = $4)
+			ORDER BY created_at ASC
+			LIMIT $1
+			OFFSET $2
+		`
 
-	offset := (pagination.Page - 1) * pagination.Limit
-	rows, err := r.db.QueryContext(ctx, query, pagination.Limit, offset)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrJobNotFound
-		}
-		return nil, err
-	}
-	defer rows.Close()
-
-	jobs := make([]*model.Job, 0, pagination.Limit)
-	for rows.Next() {
-		job := &model.Job{}
-		if err := rows.Scan(
-			&job.ID,
-			&job.Type,
-			&job.Payload,
-			&job.Status,
-			&job.Priority,
-			&job.Attempts,
-			&job.MaxAttempts,
-			&job.ScheduledAt,
-			&job.LockedBy,
-			&job.LockedAt,
-			&job.LeaseExpiresAt,
-			&job.ClaimToken,
-			&job.Result,
-			&job.LastError,
-			&job.StartedAt,
-			&job.CompletedAt,
-			&job.CreatedAt,
-			&job.UpdatedAt,
-		); err != nil {
+		offset := (pagination.Page - 1) * pagination.Limit
+		rows, err := r.db.QueryContext(
+			ctx,
+			query,
+			pagination.Limit,
+			offset,
+			filters.Status,
+			filters.JobType,
+		)
+		
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrJobNotFound
+			}
 			return nil, err
 		}
-		jobs = append(jobs, job)
-	}
+		defer rows.Close()
 
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+		jobs := make([]*model.Job, 0, pagination.Limit)
+		for rows.Next() {
+			job := &model.Job{}
+			if err := rows.Scan(
+				&job.ID,
+				&job.Type,
+				&job.Payload,
+				&job.Status,
+				&job.Priority,
+				&job.Attempts,
+				&job.MaxAttempts,
+				&job.ScheduledAt,
+				&job.LockedBy,
+				&job.LockedAt,
+				&job.LeaseExpiresAt,
+				&job.ClaimToken,
+				&job.Result,
+				&job.LastError,
+				&job.StartedAt,
+				&job.CompletedAt,
+				&job.CreatedAt,
+				&job.UpdatedAt,
+			); err != nil {
+				return nil, err
+			}
+			jobs = append(jobs, job)
+		}
 
-	return jobs, nil
-}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+
+		return jobs, nil
+	}
