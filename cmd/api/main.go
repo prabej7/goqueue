@@ -14,8 +14,8 @@ import (
 	"github.com/prabej7/goqueue/internal/config"
 	"github.com/prabej7/goqueue/internal/database"
 	"github.com/prabej7/goqueue/internal/job/bootstrap"
-	"github.com/prabej7/goqueue/internal/job/repository"
 	"github.com/prabej7/goqueue/internal/server"
+	"github.com/prabej7/goqueue/internal/store"
 	"github.com/prabej7/goqueue/internal/worker"
 )
 
@@ -51,9 +51,12 @@ func main() {
 
 	log.Print("db initialized successfully")
 
+	// store := store.NewMockStore()
+	store := store.NewPostgresStore(db)
 	// Initialize HTTP server
 	handler := server.New(server.Dependencies{
 		DB: db,
+		Store: store,
 	})
 
 	httpServer := &http.Server{
@@ -67,7 +70,8 @@ func main() {
 	// Initialize worker
 	jobWorker := worker.NewWorker(
 		uuid.New(),
-		repository.NewJobRepository(db),
+		// repository.NewJobRepository(db),
+		*store.JobRepository,
 		registry,
 		cfg,
 	)
