@@ -7,13 +7,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	jobDtos "github.com/prabej7/goqueue/internal/job/dtos"
 	jobHandler "github.com/prabej7/goqueue/internal/job/handler"
-	jobRepository "github.com/prabej7/goqueue/internal/job/repository"
-	jobService "github.com/prabej7/goqueue/internal/job/service"
 	"github.com/prabej7/goqueue/internal/middleware"
+	"github.com/prabej7/goqueue/internal/store"
 )
 
 type Dependencies struct {
-	DB *sql.DB
+	DB    *sql.DB
+	Store *store.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -25,13 +25,13 @@ func New(deps Dependencies) http.Handler {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
-		jobRepository := jobRepository.NewJobRepository(deps.DB)
-		jobService := jobService.NewService(jobRepository)
-		jobHandler := jobHandler.NewHandler(jobService)
+
+		jobHandler := jobHandler.NewHandler(deps.Store.JobService)
+
 		r.Route("/jobs", func(r chi.Router) {
 			r.Post("/", middleware.ValidatePayload[jobDtos.QueueJobPayload](jobHandler.QueueJob))
 
-			r.Get("/{id}", jobHandler.GetJobByID)
+			r.Get("/{id}", middleware.ValidateUUIDParam("id")(jobHandler.GetJobByID))
 
 			r.Get("/",
 				middleware.ValidateQuery[jobDtos.GetAllQuery](jobHandler.GetAll),
