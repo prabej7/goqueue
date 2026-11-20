@@ -28,7 +28,8 @@ func (m *MockJobRepository) Create(ctx context.Context, job *model.Job) (*model.
 		return nil, m.CreateErr
 	}
 
-	m.Jobs = append(m.Jobs, job)
+	stored := *job
+	m.Jobs = append(m.Jobs, &stored)
 
 	return job, nil
 }
@@ -87,6 +88,7 @@ func (m *MockJobRepository) ClaimNextJob(
 	selected.LeaseExpiresAt = &payload.LeaseExpiration
 	claimToken := payload.ClaimToken.String()
 	selected.ClaimToken = &claimToken
+	selected.Attempts++
 
 	selected.UpdatedAt = now
 
@@ -147,6 +149,10 @@ func (m *MockJobRepository) updateClaimedJobStatus(
 
 	if job.ClaimToken != nil && *job.ClaimToken == claimToken {
 		job.Status = status
+		job.ClaimToken = nil
+		job.LeaseExpiresAt = nil
+		job.LockedAt = nil
+		job.LockedBy = nil
 	} else {
 		return ErrJobClaimLost
 	}
