@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"github.com/gorilla/schema"
 	apperrors "github.com/prabej7/goqueue/internal/utils/errors"
 )
@@ -106,7 +106,6 @@ func ValidateQuery[T any](next http.HandlerFunc) http.HandlerFunc {
 		var query T
 
 		if err := schema.NewDecoder().Decode(&query, r.URL.Query()); err != nil {
-			log.Println("error here")
 			apperrors.ValidationError(w, "invalid query", nil)
 			return
 		}
@@ -132,5 +131,38 @@ func ValidateQuery[T any](next http.HandlerFunc) http.HandlerFunc {
 }
 
 func GetQuery[T any](r *http.Request) T {
-    return *r.Context().Value(QueryKey).(*T)
+	return *r.Context().Value(QueryKey).(*T)
+}
+
+func ValidateUUID(id string) error {
+	if len(id) != 36 {
+		return fmt.Errorf("invalid UUID length")
+	}
+
+	_, err := uuid.Parse(id)
+	if err != nil {
+		return fmt.Errorf("invalid UUID format")
+	}
+
+	return nil
+}
+
+func ValidateUUIDParam(param string) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			id := chi.URLParam(r, "id")
+
+			err := ValidateUUID(id)
+			if err != nil {
+				apperrors.ValidationError(
+					w,
+					"invalid id",
+					nil,
+				)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		}
+	}
 }
