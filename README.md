@@ -1,6 +1,26 @@
-# GoQueue
+ <div align="center">
 
-**A distributed background job processing system built with Go and PostgreSQL.**
+
+# **GoQueue**
+
+A distributed background job processing system built with Go and PostgreSQL.
+
+  <img src="https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white" />
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
+
+  <br />
+
+
+  <p>
+    <i>Reliable background processing. Concurrent workers. Built from scratch.</i>
+  </p>
+
+  <a href="https://github.com/prabej7/goqueue">
+    <img src="https://img.shields.io/badge/Explore-Repository-black?style=for-the-badge&logo=github" />
+  </a>
+
+</div>
 
 GoQueue is a backend job queue designed to reliably execute asynchronous tasks using concurrent workers. It uses PostgreSQL for persistent job storage and atomic job claiming, allowing multiple workers to process jobs concurrently without accidentally executing the same job at the same time.
 
@@ -38,77 +58,12 @@ Instead of relying on an in-memory queue, GoQueue uses PostgreSQL as its persist
 
 GoQueue follows a layered architecture that separates HTTP handling, business logic, database operations, and background processing.
 
-```text
-                 ┌─────────────────────┐
-                 │      Client         │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │     HTTP API        │
-                 │  Handlers / Routes  │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │      Service        │
-                 │   Business Logic    │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │    Repository       │
-                 │  Database Queries   │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │     PostgreSQL      │
-                 │    Persistent Jobs  │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │    Worker Pool      │
-                 │  Concurrent Workers │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │   Handler Registry  │
-                 │  Job Type → Handler │
-                 └─────────────────────┘
-```
+![GoQueue architecture](docs/images/architecture.png)
 
 ### Job Processing Lifecycle
 
 Every job moves through a defined lifecycle.
-
-```text
-          ┌─────────┐
-          │ PENDING │
-          └────┬────┘
-               │
-               ▼
-         ┌────────────┐
-         │ PROCESSING │
-         └─────┬──────┘
-               │
-         ┌─────┴──────┐
-         │            │
-         ▼            ▼
-    ┌──────────┐  ┌──────────┐
-    │COMPLETED │  │  FAILED  │
-    └──────────┘  └────┬─────┘
-                       │
-                 Retry Available?
-                   /       \
-                 Yes        No
-                  │          │
-                  ▼          ▼
-              PENDING    TERMINAL
-                         FAILURE
-```
+![GoQueue architecture](docs/images/jobcycle.png)
 
 A failed job can be scheduled for another attempt based on its retry policy. Jobs that exhaust their maximum attempts are moved into a terminal failure state.
 
@@ -321,7 +276,9 @@ Run the test suite:
 ```bash
 go test ./...
 ```
+
 or,
+
 ```bash
 make test
 ```
