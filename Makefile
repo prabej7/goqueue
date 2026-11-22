@@ -31,3 +31,7 @@ build:
 	@echo build Done.
 
 check: test build
+
+run:
+	@echo "Running the application..."
+	@./bin/main
