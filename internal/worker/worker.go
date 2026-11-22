@@ -75,20 +75,15 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 		WorkerID:        w.id,
 		LeaseExpiration: time.Now().Add(w.cfg.LeaseDuration),
 	})
-
 	if err != nil {
 		return err
 	}
-
 	if nextJob == nil {
 		return errors.New("repository returned nil job without error")
 	}
 
+	// Detached from shutdown so in-flight work isn't killed.
 	jobCtx, cancel := context.WithTimeout(
-		/*
-			Cancellation of application context shouldn't cancel
-			thhe processing worker job
-		*/
 		context.WithoutCancel(ctx),
 		w.cfg.JobTimeout,
 	)
@@ -99,30 +94,23 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 
 	handler, found := w.registry.Get(nextJob.Type)
 	if !found {
-		backoff := computeBackoff(
-			nextJob.Attempts,
-			time.Second*5,
-			time.Minute*5,
-		)
-		_, err := w.repo.FailJob(
-			ctx,
+		backoff := computeBackoff(nextJob.Attempts, 5*time.Second, 5*time.Minute)
+		if _, err := w.repo.FailJob(
+			jobCtx, // <-- was ctx
 			nextJob.ID,
 			claimToken.String(),
 			ErrNoHandlerFound,
 			time.Now().Add(backoff),
-		)
-
-		if err != nil {
+		); err != nil {
 			return err
 		}
 		return nil
 	}
 
-	heartbeatCtx, stopHeatbeat := context.WithCancel(jobCtx)
-	defer stopHeatbeat()
+	heartbeatCtx, stopHeartbeat := context.WithCancel(jobCtx)
+	defer stopHeartbeat()
 
 	heartbeatErr := make(chan error, 1)
-
 	go func() {
 		heartbeatErr <- w.heartbeat(
 			heartbeatCtx,
@@ -133,22 +121,18 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 	}()
 
 	err = handler(handlerCtx, nextJob.Payload)
-	stopHeatbeat()
+	stopHeartbeat()
 
 	hbErr := <-heartbeatErr
-
 	if hbErr != nil {
+		// Lease lost — don't try to Complete/Fail, the job will be retried.
 		return hbErr
 	}
 
 	if err != nil {
-		backoff := computeBackoff(
-			nextJob.Attempts,
-			time.Second*5,
-			time.Minute*5,
-		)
+		backoff := computeBackoff(nextJob.Attempts, 5*time.Second, 5*time.Minute)
 		if _, err := w.repo.FailJob(
-			ctx,
+			jobCtx, // <-- was ctx
 			nextJob.ID,
 			claimToken.String(),
 			err,
@@ -156,12 +140,11 @@ func (w *Worker) processNextJob(ctx context.Context) error {
 		); err != nil {
 			return err
 		}
-
 		return nil
 	}
 
 	if err := w.repo.CompleteJob(
-		ctx,
+		jobCtx, // <-- was ctx
 		nextJob.ID,
 		claimToken.String(),
 	); err != nil {
@@ -180,20 +163,26 @@ func (w *Worker) Start(ctx context.Context) error {
 		err := w.processNextJob(ctx)
 
 		if err != nil {
-			if errors.Is(err, repository.ErrNoJobsAvailable) {
+			switch {
+			case errors.Is(err, repository.ErrNoJobsAvailable):
+				// No work — poll again shortly.
 				timer := time.NewTimer(time.Second)
-
 				select {
 				case <-ctx.Done():
 					timer.Stop()
 					return nil
 				case <-timer.C:
 				}
-
 				continue
-			}
 
-			return err
+			case errors.Is(err, context.Canceled),
+				errors.Is(err, context.DeadlineExceeded):
+				// Shutdown in progress — exit cleanly, not as an error.
+				return nil
+
+			default:
+				return err
+			}
 		}
 	}
 }
@@ -261,4 +250,22 @@ func computeBackoff(
 	}
 
 	return delay
+}
+
+func InitializeWorkers(
+	ctx context.Context,
+	repo JobRepository,
+	registry *Registry,
+	cfg *config.Config,
+	numWorkers int,
+) <-chan error {
+	workerDone := make(chan error, numWorkers)
+	for range numWorkers {
+		workerID := uuid.New()
+		w := NewWorker(workerID, repo, registry, cfg)
+		go func(w *Worker) {
+			workerDone <- w.Start(ctx)
+		}(w)
+	}
+	return workerDone
 }
