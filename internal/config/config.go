@@ -33,7 +33,7 @@ func Load() (*Config, error) {
 		Env:  getEnv("ENV", "development"),
 		DatabaseConfig: DatabaseConfig{
 			DatabaseURL:           getEnv("DATABASE_URL", ""),
-			MaxIdleConnections:    getEnvInt("DB_MAX_IDLE_CONNECTIONS", 20),
+			MaxIdleConnections:    getEnvInt("DB_MAX_IDLE_CONNECTIONS", 5),
 			MaxConnectionIdleTime: getEnvDuration("DB_MAX_CONNECTION_IDLE_TIME", time.Minute*15),
 			MaxOpenConnections:    getEnvInt("DB_MAX_OPEN_CONNECTIONS", 10),
 		},
