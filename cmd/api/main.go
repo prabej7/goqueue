@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/prabej7/goqueue/internal/config"
 	"github.com/prabej7/goqueue/internal/database"
 	"github.com/prabej7/goqueue/internal/job/bootstrap"
@@ -55,7 +54,7 @@ func main() {
 	store := store.NewPostgresStore(db)
 	// Initialize HTTP server
 	handler := server.New(server.Dependencies{
-		DB: db,
+		DB:    db,
 		Store: store,
 	})
 
@@ -67,15 +66,6 @@ func main() {
 	// Register job handlers
 	registry := bootstrap.NewWorkerRegistry()
 
-	// Initialize worker
-	jobWorker := worker.NewWorker(
-		uuid.New(),
-		// repository.NewJobRepository(db),
-		*store.JobRepository,
-		registry,
-		cfg,
-	)
-
 	// Start HTTP server
 	serverErr := make(chan error, 1)
 
@@ -85,13 +75,16 @@ func main() {
 	}()
 
 	// Start worker
-	workerDone := make(chan error, 1)
+	const numWorkers = 2
+	workerDone := worker.InitializeWorkers(
+		ctx,
+		*store.JobRepository,
+		registry,
+		cfg,
+		numWorkers,
+	)
 
-	go func() {
-		workerDone <- jobWorker.Start(ctx)
-	}()
-
-	workerExited := false
+	remainingWorkers := numWorkers
 
 	// Wait for shutdown event
 	select {
@@ -105,10 +98,12 @@ func main() {
 		stop()
 
 	case err := <-workerDone:
+		remainingWorkers--
 		if err != nil {
 			log.Printf("worker exited unexpectedly: %v", err)
+		} else {
+			log.Print("worker exited")
 		}
-		workerExited = true
 		stop()
 	}
 
@@ -130,16 +125,18 @@ func main() {
 	}
 
 	// Wait for worker to finish
-	if !workerExited {
+	for remainingWorkers > 0 {
 		select {
 		case err := <-workerDone:
+			remainingWorkers--
 			if err != nil {
 				log.Printf("worker exited with error: %v", err)
+			} else {
+				log.Print("worker exited cleanly")
 			}
-			log.Print("worker shutdown complete")
-
 		case <-shutdownCtx.Done():
-			log.Print("worker shutdown timed out")
+			log.Printf("worker shutdown timed out with %d worker(s) still running", remainingWorkers)
+			remainingWorkers = 0 // break out
 		}
 	}
 
